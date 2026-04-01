@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raster Studio</title>
+<style>
+/* ===== WINDOWS CLASSIC THEME ===== */
+:root {
+  --face: #c0c0c0;
+  --light: #ffffff;
+  --dark: #808080;
+  --darker: #404040;
+  --darkest: #000000;
+  --title-bg: #000080;
+  --title-text: #ffffff;
+  --field: #ffffff;
+  --field-text: #000000;
+  --highlight: #000080;
+  --hl-text: #ffffff;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'MS Sans Serif','Tahoma','Geneva',sans-serif;font-size:11px;background:#008080;color:#000;height:100vh;overflow:hidden;user-select:none}
+
+/* Borders */
+.raised{border:2px solid;border-color:var(--light) var(--darker) var(--darker) var(--light)}
+.sunken{border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker)}
+.etched{border:1px solid var(--dark);box-shadow:inset 0 0 0 0.5px var(--light)}
+
+/* Window frame */
+.wf{position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:var(--face);display:flex;flex-direction:column}
+
+/* Title bar */
+.tb{background:var(--title-bg);color:var(--title-text);padding:2px 3px;display:flex;align-items:center;font-weight:700;font-size:11px;flex-shrink:0}
+.tb .tt{flex:1;padding:0 4px}
+.tb .tw{display:flex;gap:2px}
+.tbtn{width:16px;height:14px;background:var(--face);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
+
+/* Menu */
+.mb{background:var(--face);padding:1px 0;display:flex;border-bottom:1px solid var(--dark);flex-shrink:0}
+.mi{padding:2px 10px;cursor:pointer;font-size:11px}
+.mi:hover{background:var(--highlight);color:var(--hl-text)}
+
+/* Main layout */
+.mc{display:flex;flex:1;overflow:hidden}
+
+/* Left panel */
+.lp{width:310px;min-width:310px;background:var(--face);display:flex;flex-direction:column;border-right:2px solid var(--dark);flex-shrink:0}
+
+/* Mode tabs */
+.mtabs{display:flex;background:var(--face);padding:4px 4px 0;flex-shrink:0}
+.mtab{padding:3px 6px;background:var(--face);border:2px solid;border-color:var(--light) var(--darker) transparent var(--light);margin-right:1px;cursor:pointer;font-size:10px;font-family:inherit;color:#000;position:relative;bottom:-1px}
+.mtab.active{font-weight:700;border-bottom:2px solid var(--face);z-index:1;padding-bottom:4px}
+
+/* Scroll area */
+.scr{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px}
+.scr::-webkit-scrollbar{width:16px}
+.scr::-webkit-scrollbar-track{background:var(--face)}
+.scr::-webkit-scrollbar-thumb{background:var(--face);border:2px solid;border-color:var(--light) var(--darker) var(--darker) var(--light)}
+
+/* Group box */
+.gb{border:1px solid var(--dark);padding:12px 6px 6px;margin-bottom:6px;position:relative}
+.gb>.gl{position:absolute;top:-7px;left:8px;background:var(--face);padding:0 4px;font-size:11px}
+
+/* Controls */
+.cr{display:flex;align-items:center;margin-bottom:3px;gap:4px}
+.cr>label{font-size:11px;min-width:55px;flex-shrink:0}
+.cr input[type="range"]{flex:1;height:16px;accent-color:var(--title-bg)}
+.vl{font-size:10px;min-width:30px;text-align:right;font-family:'Courier New',monospace;background:var(--field);padding:1px 3px}
+.vl,.sunken{border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker)}
+select.ws{background:var(--field);color:var(--field-text);border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);padding:1px;font:inherit;font-size:11px;flex:1;outline:none}
+input.wi{background:var(--field);color:var(--field-text);border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);padding:1px 3px;font:inherit;font-size:11px;outline:none;width:50px}
+button.wb{background:var(--face);color:#000;border:2px solid;border-color:var(--light) var(--darker) var(--darker) var(--light);padding:2px 8px;font:inherit;font-size:11px;cursor:pointer;min-width:30px}
+button.wb:active,.wb.on{border-color:var(--darker) var(--light) var(--light) var(--darker);background:#a0a0a0}
+.wc{accent-color:#000;margin-right:3px}
+.br{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px}
+input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);padding:0;cursor:pointer;background:var(--face)}
+
+/* Pattern library grid */
+.pat-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--dark);padding:1px;margin-bottom:4px;max-height:120px;overflow-y:auto}
+.pat-cell{width:100%;aspect-ratio:1;background:var(--field);cursor:pointer;image-rendering:pixelated;position:relative}
+.pat-cell.active{outline:2px solid var(--highlight)}
+.pat-cell canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+
+/* Custom matrix editor */
+.matrix-wrap{display:flex;flex-direction:column;align-items:center;margin-bottom:4px}
+.matrix-grid{display:grid;gap:0;background:var(--dark);padding:1px;cursor:crosshair}
+.matrix-grid .mc2{width:12px;height:12px;background:var(--field);border:0.5px solid #ddd}
+
+/* Layer thumbnails */
+.layer-row{display:flex;gap:4px;align-items:center;margin-bottom:4px;justify-content:center}
+.layer-thumb{width:48px;height:48px;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);background:#888;cursor:pointer;position:relative;image-rendering:pixelated}
+.layer-thumb.active{border-color:var(--highlight) var(--highlight) var(--highlight) var(--highlight)}
+.layer-thumb canvas{width:100%;height:100%;display:block}
+.layer-plus{font-size:14px;color:var(--dark);align-self:center}
+
+/* Canvas area */
+.ca{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;background:#555;position:relative;margin:2px}
+.ca.sunken{border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker)}
+.ca.dragover::after{content:'Drop Image';position:absolute;font-size:18px;color:#fff;background:rgba(0,0,128,0.8);padding:16px 32px}
+.dh{text-align:center;color:#ccc;font-size:12px;pointer-events:none}
+.dh .ic{font-size:32px;display:block;margin-bottom:6px;color:#fff}
+#outputCanvas{image-rendering:pixelated;max-width:98%;max-height:98%}
+
+/* Status bar */
+.sb{background:var(--face);display:flex;padding:2px 4px;flex-shrink:0;gap:3px}
+.ss{flex:1;border:1px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);padding:1px 4px;font-size:11px;white-space:nowrap;overflow:hidden}
+.ss.sm{flex:0 0 auto}
+.zb{display:flex;gap:2px;align-items:center}
+.zb .wb{padding:1px 5px;min-width:18px;font-size:10px}
+
+#fileInput{display:none}
+#videoInput{display:none}
+.mp{display:none}.mp.active{display:block}
+
+/* Video Render Panel */
+.vr-progress-wrap{width:100%;height:14px;background:var(--field);border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);margin:4px 0;position:relative}
+.vr-progress-bar{height:100%;background:var(--title-bg);width:0%;transition:width 0.1s}
+.vr-progress-text{position:absolute;top:0;left:0;right:0;text-align:center;font-size:9px;line-height:14px;color:var(--field-text);mix-blend-mode:difference;color:#fff}
+.vr-timeline{width:100%;height:40px;background:#333;margin:4px 0;position:relative;cursor:pointer;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);overflow:hidden}
+.vr-timeline canvas{width:100%;height:100%;display:block}
+.vr-playhead{position:absolute;top:0;bottom:0;width:2px;background:red;pointer-events:none;left:0}
+.vr-preview{width:100%;aspect-ratio:16/9;background:#000;margin:4px 0;display:flex;align-items:center;justify-content:center;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);position:relative;overflow:hidden}
+.vr-preview video,.vr-preview canvas{max-width:100%;max-height:100%;object-fit:contain}
+.vr-controls{display:flex;gap:2px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.vr-time{font-family:'Courier New',monospace;font-size:10px;background:var(--field);padding:1px 4px;border:1px solid var(--darker);min-width:70px;text-align:center}
+
+/* Subsection title */
+.sub-title{font-size:10px;font-weight:700;color:var(--darker);margin:4px 0 2px;text-transform:uppercase;letter-spacing:0.5px}
+
+/* Preview canvas (small) */
+.preview-box{width:100%;height:80px;background:#888;margin-bottom:4px;display:flex;align-items:center;justify-content:center;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker)}
+.preview-box canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
+</style>
+</head>
+<body>
+
+<div class="wf raised">
+  <div class="tb">
+    <span class="tt">Raster Studio</span>
+    <div class="tw"><div class="tbtn raised">_</div><div class="tbtn raised">[]</div><div class="tbtn raised">X</div></div>
+  </div>
+  <div class="mb">
+    <span class="mi" onclick="document.getElementById('fileInput').click()">Open Image...</span>
+    <span class="mi" onclick="document.getElementById('videoInput').click()">Open Video...</span>
+    <span class="mi" onclick="resetAll()">Reset</span>
+    <span class="mi" onclick="exportPNG()">Save PNG...</span>
+    <span class="mi" id="miExportVideo" onclick="exportVideo()" style="display:none">Export Video...</span>
+  </div>
+  <input type="file" id="fileInput" accept="image/*">
+  <input type="file" id="videoInput" accept="video/*">
+
+  <div class="mc">
+    <div class="lp">
+      <div class="mtabs">
+        <button class="mtab active" data-mode="dotraster" onclick="switchMode(this)">Dotraster</button>
+        <button class="mtab" data-mode="stochaster" onclick="switchMode(this)">Stochaster</button>
+        <button class="mtab" data-mode="pointillist" onclick="switchMode(this)">Pointillist</button>
+        <button class="mtab" data-mode="coloraster" onclick="switchMode(this)">Coloraster</button>
+      </div>
+      <div class="scr">
+
+        <!-- ===== OUTPUT SIZE ===== -->
+        <fieldset class="gb"><span class="gl">Image</span>
+          <div class="cr">
+            <label>Width</label><input class="wi" type="number" id="outWidth" min="1" max="8000" value="800">
+            <label style="min-width:auto">Height</label><input class="wi" type="number" id="outHeight" min="1" max="8000" value="600">
+            <button class="wb" id="lockBtn" onclick="toggleLock()">&#128279;</button>
+          </div>
+          <div class="cr"><label>Scale</label><input type="range" id="scalePercent" min="10" max="400" value="100"><span class="vl" id="scaleVal">100%</span></div>
+          <div class="br">
+            <button class="wb" onclick="applyResize()">Apply</button>
+            <button class="wb" onclick="resetSize()">Original</button>
+            <button class="wb" onclick="presetSize(512,512)">512</button>
+            <button class="wb" onclick="presetSize(1024,1024)">1024</button>
+            <button class="wb" onclick="presetSize(1920,1080)">HD</button>
+            <button class="wb" onclick="presetSize(3840,2160)">4K</button>
+          </div>
+          <div class="cr"><label>Rotation</label>
+            <button class="wb" onclick="rotateImg(0)">0</button>
+            <button class="wb" onclick="rotateImg(90)">90</button>
+            <button class="wb" onclick="rotateImg(180)">180</button>
+            <button class="wb" onclick="rotateImg(270)">270</button>
+            <button class="wb" onclick="flipH()">Flip</button>
+          </div>
+        </fieldset>
+
+        <!-- ===== DOTRASTER ===== -->
+        <div class="mp active" id="panel-dotraster">
+
+          <fieldset class="gb"><span class="gl">Halftone Mode</span>
+            <div class="br">
+              <button class="wb on" id="ht-am" onclick="setHT('am',this)">AM</button>
+              <button class="wb" id="ht-pattern" onclick="setHT('pattern',this)">Pattern</button>
+              <button class="wb" id="ht-errordiff" onclick="setHT('errordiff',this)">Error Diff</button>
+              <button class="wb" id="ht-ordered" onclick="setHT('ordered',this)">Ordered</button>
+              <button class="wb" id="ht-noise" onclick="setHT('noise',this)">Noise</button>
+              <button class="wb" id="ht-threshold" onclick="setHT('threshold',this)">Threshold</button>
+            </div>
+          </fieldset>
+
+          <!-- AM -->
+          <fieldset class="gb htc" id="hc-am"><span class="gl">AM Screening</span>
+            <div class="cr"><label>Dot Shape</label><select class="ws" id="amShape"><option value="circle">Circle</option><option value="euclidian">Euclidian</option><option value="square">Square</option><option value="line">Line</option></select></div>
+            <div class="cr"><label>Layout</label><select class="ws" id="amLayout"><option value="grid">Grid</option><option value="benday">Benday</option></select></div>
+            <div class="cr"><label>Lineature</label><input type="range" id="amLPI" min="2" max="120" value="20"><span class="vl" id="amLPIVal">20 lpi</span></div>
+            <div class="cr"><label>Angle</label><input type="range" id="amAngle" min="-180" max="180" value="45"><span class="vl" id="amAngleVal">45°</span></div>
+            <div class="sub-title">Angle Presets</div>
+            <div class="br">
+              <button class="wb" onclick="aP(0)">0°</button><button class="wb" onclick="aP(15)">15°</button>
+              <button class="wb" onclick="aP(45)">45°</button><button class="wb" onclick="aP(75)">75°</button><button class="wb" onclick="aP(90)">90°</button>
+            </div>
+            <div class="cr"><label>Shift X</label><input type="range" id="amShiftX" min="-50" max="50" value="0"><span class="vl" id="amShiftXVal">0</span></div>
+            <div class="cr"><label>Shift Y</label><input type="range" id="amShiftY" min="-50" max="50" value="0"><span class="vl" id="amShiftYVal">0</span></div>
+          </fieldset>
+
+          <!-- Pattern -->
+          <fieldset class="gb htc" id="hc-pattern" style="display:none"><span class="gl">Pattern</span>
+            <div class="sub-title">Library</div>
+            <div class="pat-grid" id="patLibrary"></div>
+            <div class="cr"><label>Offset X</label><input type="range" id="patOffX" min="0" max="30" value="0"><span class="vl" id="patOffXVal">0</span></div>
+            <div class="cr"><label>Offset Y</label><input type="range" id="patOffY" min="0" max="30" value="0"><span class="vl" id="patOffYVal">0</span></div>
+            <div class="cr"><label>Rotation</label>
+              <button class="wb" onclick="patRot(0)">0</button><button class="wb" onclick="patRot(90)">90</button>
+              <button class="wb" onclick="patRot(180)">180</button><button class="wb" onclick="patRot(270)">270</button>
+            </div>
+            <div class="sub-title">Custom Pattern</div>
+            <div class="cr"><label>Size</label><input class="wi" type="number" id="matrixSize" min="2" max="16" value="8" onchange="initMatrix()"><span style="font-size:10px">px²</span></div>
+            <div class="matrix-wrap"><div class="matrix-grid" id="matrixGrid"></div></div>
+            <div class="br"><button class="wb" onclick="initMatrix()">Init</button><button class="wb" onclick="useCustomPattern()">Apply</button></div>
+          </fieldset>
+
+          <!-- Error Diffusion -->
+          <fieldset class="gb htc" id="hc-errordiff" style="display:none"><span class="gl">Error Diffusion</span>
+            <div class="cr"><label>Algorithm</label><select class="ws" id="errorAlgo">
+              <option value="floyd">Floyd-Steinberg</option><option value="falsefs">False F-S</option>
+              <option value="jjn">JaJuNi</option><option value="stucki">Stucki</option>
+              <option value="burkes">Burkes</option><option value="sierra">Sierra</option>
+              <option value="sierra2">Two-Row Sierra</option><option value="sierralite">Sierra Lite</option>
+              <option value="atkinson">Atkinson</option><option value="fan">Fan</option>
+            </select></div>
+            <div class="cr"><label>Strength</label><input type="range" id="errorStrength" min="10" max="100" value="100"><span class="vl" id="errorStrengthVal">100%</span></div>
+          </fieldset>
+
+          <!-- Ordered -->
+          <fieldset class="gb htc" id="hc-ordered" style="display:none"><span class="gl">Ordered Dither</span>
+            <div class="cr"><label>Matrix</label><select class="ws" id="orderedSize"><option value="2">Bayer 2x2</option><option value="4" selected>Bayer 4x4</option><option value="8">Bayer 8x8</option><option value="16">Bayer 16x16</option></select></div>
+            <div class="cr"><label>Levels</label><input type="range" id="orderedLevels" min="2" max="16" value="2"><span class="vl" id="orderedLevelsVal">2</span></div>
+          </fieldset>
+
+          <!-- Noise -->
+          <fieldset class="gb htc" id="hc-noise" style="display:none"><span class="gl">Noise Dither</span>
+            <div class="cr"><label>Type</label><select class="ws" id="noiseType"><option value="random">Random</option><option value="gaussian">Gaussian</option><option value="simplex">Simplex</option><option value="worley">Worley</option></select></div>
+            <div class="cr"><label>Std Dev</label><input type="range" id="noiseStdDev" min="0" max="100" value="50"><span class="vl" id="noiseStdDevVal">0.50</span></div>
+            <div class="cr"><label>Size</label><input type="range" id="noiseSize" min="1" max="100" value="20"><span class="vl" id="noiseSizeVal">20</span></div>
+            <div class="cr"><label>Dots</label><select class="ws" id="noiseDots"><option value="black">Black</option><option value="white">White</option><option value="blend">Blend</option></select></div>
+          </fieldset>
+
+          <!-- Threshold -->
+          <fieldset class="gb htc" id="hc-threshold" style="display:none"><span class="gl">Threshold</span>
+            <div class="cr"><label>Level</label><input type="range" id="thresholdVal" min="0" max="255" value="128"><span class="vl" id="thresholdValD">128</span></div>
+          </fieldset>
+        </div>
+
+        <!-- ===== STOCHASTER ===== -->
+        <div class="mp" id="panel-stochaster">
+          <fieldset class="gb"><span class="gl">Mode</span>
+            <div class="br">
+              <button class="wb on" id="st-serpentine" onclick="setStoch('serpentine',this)">Serpentines</button>
+              <button class="wb" id="st-spiral" onclick="setStoch('spiral',this)">Spirals</button>
+            </div>
+          </fieldset>
+
+          <!-- Serpentine -->
+          <fieldset class="gb stc" id="sc-serpentine"><span class="gl">Pattern Settings</span>
+            <div class="cr"><label>Preset</label><select class="ws" id="rdPreset" onchange="applyRDPreset()">
+              <option value="custom">Custom</option><option value="bubbles">Bubbles</option><option value="chaos">Chaos</option>
+              <option value="coral">Coral</option><option value="fingerprint">Fingerprints</option>
+              <option value="daotian">Daotian</option><option value="loops">Loops</option><option value="mazes" selected>Mazes</option>
+              <option value="spots">Spots</option><option value="turing">Turing</option><option value="worms">Worms</option><option value="zebra">Zebra</option>
+            </select><input type="checkbox" class="wc" id="rdCustom"><label style="min-width:auto" for="rdCustom">Custom</label></div>
+            <div class="cr"><label>U (Clear)</label><input type="range" id="rdU" min="50" max="250" value="170"><span class="vl" id="rdUVal">170</span></div>
+            <div class="cr"><label>V (Thick)</label><input type="range" id="rdV" min="10" max="120" value="55"><span class="vl" id="rdVVal">55</span></div>
+            <div class="cr"><label>F (Maze)</label><input type="range" id="rdF" min="0" max="150" value="100"><span class="vl" id="rdFVal">100</span></div>
+            <div class="cr"><label>K (Dots)</label><input type="range" id="rdK" min="0" max="100" value="59"><span class="vl" id="rdKVal">59</span></div>
+            <div class="cr"><label>Grow</label><input type="range" id="rdGrow" min="5" max="60" value="20"><span class="vl" id="rdGrowVal">20</span></div>
+            <div class="sub-title">Activated Layers</div>
+            <div class="layer-row" id="layerRow">
+              <div class="layer-thumb active" data-layer="0" onclick="toggleLayer(this)"><canvas width="48" height="48"></canvas></div>
+              <span class="layer-plus">+</span>
+              <div class="layer-thumb active" data-layer="1" onclick="toggleLayer(this)"><canvas width="48" height="48"></canvas></div>
+              <span class="layer-plus">+</span>
+              <div class="layer-thumb active" data-layer="2" onclick="toggleLayer(this)"><canvas width="48" height="48"></canvas></div>
+              <span class="layer-plus">+</span>
+              <div class="layer-thumb active" data-layer="3" onclick="toggleLayer(this)"><canvas width="48" height="48"></canvas></div>
+            </div>
+          </fieldset>
+
+          <!-- Spirals -->
+          <fieldset class="gb stc" id="sc-spiral" style="display:none"><span class="gl">Spirals</span>
+            <div class="cr"><label>Arms</label><input type="range" id="spiralArms" min="1" max="12" value="3"><span class="vl" id="spiralArmsVal">3</span></div>
+            <div class="cr"><label>Wrap</label><input type="range" id="spiralWrap" min="0" max="50" value="10"><span class="vl" id="spiralWrapVal">10</span></div>
+            <div class="cr"><label>Direction</label><select class="ws" id="spiralDir"><option value="cw">Clockwise</option><option value="ccw">Anti-CW</option><option value="random">Random</option><option value="swing">Swing</option></select></div>
+            <div class="cr"><label>Spacing</label><input type="range" id="spiralSpacing" min="10" max="200" value="60"><span class="vl" id="spiralSpacingVal">60</span></div>
+            <div class="cr"><label>Radius</label><input type="range" id="spiralRadius" min="1" max="200" value="50"><span class="vl" id="spiralRadiusVal">50</span></div>
+            <div class="cr"><label>Contour</label><select class="ws" id="spiralContour"><option value="relative">Relative</option><option value="absolute">Absolute (4px)</option></select></div>
+          </fieldset>
+
+          <fieldset class="gb"><span class="gl">Halftone</span>
+            <div class="cr"><label>Angle</label><input type="range" id="stochAngle" min="-180" max="180" value="0"><span class="vl" id="stochAngleVal">0°</span></div>
+            <div class="cr"><label>Lineature</label><input type="range" id="stochLPI" min="2" max="80" value="15"><span class="vl" id="stochLPIVal">15</span></div>
+            <div class="cr"><label>Dot Area</label><select class="ws" id="stochDotArea"><option value="1">1 px</option><option value="4" selected>4 px</option><option value="5">5 px</option><option value="9">9 px</option><option value="12">12 px</option></select></div>
+          </fieldset>
+
+          <fieldset class="gb"><span class="gl">Tints Separation</span>
+            <div class="cr"><label>Mode</label><select class="ws" id="stochTint"><option value="black">Black</option><option value="white">White</option><option value="blend" selected>Blend</option></select></div>
+            <div class="cr"><input type="checkbox" class="wc" id="stochInvert"><label for="stochInvert">Invert</label></div>
+          </fieldset>
+        </div>
+
+        <!-- ===== POINTILLIST ===== -->
+        <div class="mp" id="panel-pointillist">
+          <fieldset class="gb"><span class="gl">Point Shape</span>
+            <div class="br">
+              <button class="wb on" id="pt-circle" onclick="setPtS('circle',this)">Circle</button>
+              <button class="wb" id="pt-polygon" onclick="setPtS('polygon',this)">Polygon</button>
+              <button class="wb" id="pt-line" onclick="setPtS('line',this)">Line</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="gb"><span class="gl">Point</span>
+            <div class="cr"><label>Size</label><input type="range" id="ptSize" min="1" max="30" value="4"><span class="vl" id="ptSizeVal">4</span></div>
+            <div class="cr"><input type="checkbox" class="wc" id="ptSizeRange"><label for="ptSizeRange">Range (brightness)</label></div>
+            <div class="cr" id="ptSizeMinRow" style="display:none"><label>Min</label><input type="range" id="ptSizeMin" min="1" max="30" value="1"><span class="vl" id="ptSizeMinVal">1</span></div>
+
+            <!-- Polygon opts -->
+            <div id="ptPolyOpts" style="display:none">
+              <div class="cr"><label>Vertices</label><input type="range" id="ptVertices" min="3" max="12" value="6"><span class="vl" id="ptVerticesVal">6</span></div>
+              <div class="cr"><label>Warping</label><input type="range" id="ptWarp" min="0" max="100" value="0"><span class="vl" id="ptWarpVal">0</span></div>
+            </div>
+
+            <!-- Line opts -->
+            <div id="ptLineOpts" style="display:none">
+              <div class="cr"><label>Style</label><select class="ws" id="ptLineStyle"><option value="linear">Linear</option><option value="radial">Radial (Star)</option><option value="rounded">Rounded</option></select></div>
+              <div class="cr"><label>Length</label><input type="range" id="ptLength" min="1" max="40" value="10"><span class="vl" id="ptLengthVal">10</span></div>
+              <div class="cr"><input type="checkbox" class="wc" id="ptLenRandom"><label for="ptLenRandom">Random</label></div>
+              <div class="cr"><label>Segments</label><input type="range" id="ptSegments" min="1" max="20" value="5"><span class="vl" id="ptSegmentsVal">5</span></div>
+              <div class="cr"><label>Warping</label><input type="range" id="ptLineWarp" min="0" max="100" value="0"><span class="vl" id="ptLineWarpVal">0</span></div>
+            </div>
+
+            <div class="cr"><label>Angle</label><input type="range" id="ptAngle" min="0" max="360" value="0"><span class="vl" id="ptAngleVal">0°</span></div>
+            <div class="cr"><input type="checkbox" class="wc" id="ptAngleRange"><label for="ptAngleRange">Range</label><input type="checkbox" class="wc" id="ptAngleRandom"><label for="ptAngleRandom">Random</label></div>
+          </fieldset>
+
+          <fieldset class="gb"><span class="gl">Stippling</span>
+            <div class="sub-title">Points Spacing</div>
+            <div class="cr"><label>Min</label><input type="range" id="ptSpaceMin" min="1" max="30" value="2"><span class="vl" id="ptSpaceMinVal">2</span></div>
+            <div class="cr"><label>Max</label><input type="range" id="ptSpaceMax" min="1" max="60" value="15"><span class="vl" id="ptSpaceMaxVal">15</span></div>
+            <div class="sub-title">Render</div>
+            <div class="cr"><label>Phases</label><input type="range" id="ptPhases" min="1" max="32" value="8"><span class="vl" id="ptPhasesVal">8</span></div>
+            <div class="cr"><input type="checkbox" class="wc" id="ptOverpaint"><label for="ptOverpaint">Overpaint</label></div>
+            <div class="cr"><input type="checkbox" class="wc" id="ptHideZone"><label for="ptHideZone">Hide Zone</label>
+              <input class="wi" type="number" id="ptHideMin" min="0" max="255" value="200" style="width:35px">
+              <span style="font-size:10px">&rarr; 255</span>
+            </div>
+            <div class="cr"><input type="checkbox" class="wc" id="ptAA" checked><label for="ptAA">Antialiasing</label></div>
+          </fieldset>
+
+          <fieldset class="gb"><span class="gl">Color</span>
+            <div class="cr"><label>Mode</label><select class="ws" id="ptColorMode"><option value="solid">Solid</option><option value="adaptive">Adaptive</option><option value="image">Original Image</option><option value="multi">Multicolor</option></select></div>
+            <div class="cr"><label>Point</label><input type="color" id="ptDotColor" value="#23200e"><span class="vl" style="min-width:50px" id="ptDotHex">#23200E</span></div>
+            <div class="cr"><label>Alpha</label><input type="range" id="ptAlpha" min="0" max="255" value="192"><span class="vl" id="ptAlphaVal">192</span></div>
+            <div class="cr"><label>BG</label><input type="color" id="ptBGColor" value="#588fff"><span class="vl" style="min-width:50px" id="ptBGHex">#588FFF</span></div>
+            <div class="br"><button class="wb" onclick="swapPtColors()">Swap Colors</button><button class="wb" onclick="randomPtColor()">Random</button></div>
+          </fieldset>
+        </div>
+
+        <!-- ===== COLORASTER ===== -->
+        <div class="mp" id="panel-coloraster">
+          <fieldset class="gb"><span class="gl">Color Mode</span>
+            <div class="cr"><label>Mode</label><select class="ws" id="clrMode" onchange="showClrOpts()">
+              <option value="grayscale">Grayscale</option><option value="duotone">Duotone</option><option value="tritone">Tritone</option>
+              <option value="rgb-split">RGB Split</option><option value="cmyk-split">CMYK Separate</option>
+              <option value="posterize">Posterize</option><option value="hue-shift">Hue Shift</option><option value="colorize">Colorize</option>
+            </select></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-duotone" style="display:none"><span class="gl">Duotone</span>
+            <div class="cr"><label>Shadow</label><input type="color" id="duoShadow" value="#000033"></div>
+            <div class="cr"><label>Highlight</label><input type="color" id="duoHighlight" value="#ff6600"></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-tritone" style="display:none"><span class="gl">Tritone</span>
+            <div class="cr"><label>Shadow</label><input type="color" id="triShadow" value="#1a0033"></div>
+            <div class="cr"><label>Mid</label><input type="color" id="triMid" value="#cc3300"></div>
+            <div class="cr"><label>Highlight</label><input type="color" id="triHighlight" value="#ffcc00"></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-posterize" style="display:none"><span class="gl">Posterize</span>
+            <div class="cr"><label>Levels</label><input type="range" id="posterizeLevels" min="2" max="16" value="4"><span class="vl" id="posterizeLevelsVal">4</span></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-hueshift" style="display:none"><span class="gl">Hue Shift</span>
+            <div class="cr"><label>Hue</label><input type="range" id="hueShift" min="0" max="360" value="0"><span class="vl" id="hueShiftVal">0°</span></div>
+            <div class="cr"><label>Saturation</label><input type="range" id="satShift" min="0" max="200" value="100"><span class="vl" id="satShiftVal">100%</span></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-colorize" style="display:none"><span class="gl">Colorize</span>
+            <div class="cr"><label>Color</label><input type="color" id="colorizeHue" value="#ff4400"></div>
+            <div class="cr"><label>Strength</label><input type="range" id="colorizeStr" min="0" max="100" value="50"><span class="vl" id="colorizeStrVal">50%</span></div>
+          </fieldset>
+          <fieldset class="gb co" id="clr-rgbsplit" style="display:none"><span class="gl">RGB Split</span>
+            <div class="cr"><label>Offset X</label><input type="range" id="rgbOffX" min="0" max="40" value="5"><span class="vl" id="rgbOffXVal">5</span></div>
+            <div class="cr"><label>Offset Y</label><input type="range" id="rgbOffY" min="0" max="40" value="0"><span class="vl" id="rgbOffYVal">0</span></div>
+          </fieldset>
+        </div>
+
+        <!-- ===== COMMON FILTERS ===== -->
+        <fieldset class="gb"><span class="gl">Filters</span>
+          <div class="cr"><label>Grayscale</label><select class="ws" id="grayMethod">
+            <option value="luminance">Luminance</option><option value="average">Average</option>
+            <option value="lightness">Lightness</option><option value="red">Red</option>
+            <option value="green">Green</option><option value="blue">Blue</option><option value="none">None (Color)</option>
+          </select></div>
+          <div class="cr"><label>Bright</label><input type="range" id="brightness" min="-125" max="125" value="0"><span class="vl" id="brightnessVal">0</span></div>
+          <div class="cr"><label>Contrast</label><input type="range" id="contrast" min="-125" max="125" value="0"><span class="vl" id="contrastVal">0</span></div>
+          <div class="cr"><label>Gamma</label><input type="range" id="gamma" min="10" max="300" value="100"><span class="vl" id="gammaVal">1.0</span></div>
+          <div class="cr"><label>Sharpen</label><input type="range" id="sharpen" min="0" max="5" value="0"><span class="vl" id="sharpenVal">0 px</span></div>
+          <div class="cr"><label>Intensity</label><input type="range" id="sharpInt" min="50" max="100" value="80"><span class="vl" id="sharpIntVal">80%</span></div>
+          <div class="cr"><input type="checkbox" class="wc" id="invertCheck"><label for="invertCheck">Invert</label></div>
+        </fieldset>
+
+        <!-- ===== DOT GAIN (for Stochaster/Dotraster) ===== -->
+        <fieldset class="gb" id="dotGainBox"><span class="gl">Dot Gain</span>
+          <div class="cr"><label>Shadows</label><input type="range" id="dgShadow" min="-50" max="50" value="0"><span class="vl" id="dgShadowVal">0%</span></div>
+          <div class="cr"><label>Highlights</label><input type="range" id="dgHighlight" min="-50" max="50" value="0"><span class="vl" id="dgHighlightVal">0%</span></div>
+        </fieldset>
+
+        <!-- ===== OUTPUT COLORS ===== -->
+        <fieldset class="gb"><span class="gl">Output</span>
+          <div class="cr"><label>Dot</label><input type="color" id="dotColor" value="#000000"><label style="min-width:auto">BG</label><input type="color" id="bgColor" value="#ffffff"></div>
+          <div class="cr"><input type="checkbox" class="wc" id="transparentBg"><label for="transparentBg">Transparent BG</label></div>
+        </fieldset>
+
+        <!-- ===== VIDEO RENDER ===== -->
+        <fieldset class="gb" id="videoPanel" style="display:none"><span class="gl">Video Render</span>
+          <div class="vr-preview" id="vrPreview">
+            <video id="vrVideo" style="display:none" muted></video>
+            <canvas id="vrCanvas"></canvas>
+            <span style="color:#888;font-size:11px" id="vrHint">Video loaded</span>
+          </div>
+          <div class="vr-timeline" id="vrTimeline" onclick="seekVideo(event)">
+            <canvas id="vrTimelineCanvas" height="36"></canvas>
+            <div class="vr-playhead" id="vrPlayhead"></div>
+          </div>
+          <div class="vr-controls">
+            <button class="wb" onclick="vrPlay()" id="vrPlayBtn">&#9654;</button>
+            <button class="wb" onclick="vrPause()" id="vrPauseBtn">&#10074;&#10074;</button>
+            <button class="wb" onclick="vrStop()">&#9632;</button>
+            <span class="vr-time" id="vrTime">0:00 / 0:00</span>
+            <button class="wb" onclick="vrStepBack()" title="Prev frame">&#9664;|</button>
+            <button class="wb" onclick="vrStepFwd()" title="Next frame">|&#9654;</button>
+          </div>
+          <div class="cr"><label>FPS</label><select class="ws" id="vrFPS">
+            <option value="10">10</option><option value="15">15</option><option value="24" selected>24</option><option value="30">30</option><option value="60">60</option>
+          </select></div>
+          <div class="cr"><label>Quality</label><select class="ws" id="vrQuality">
+            <option value="full">Full</option><option value="half">Half (faster)</option><option value="quarter">Quarter (fastest)</option>
+          </select></div>
+          <div class="cr"><label>Format</label><select class="ws" id="vrFormat">
+            <option value="mp4">MP4 (H.264)</option><option value="webm">WebM (VP9)</option><option value="gif">GIF</option>
+          </select></div>
+          <div class="cr"><label>Trim Start</label><input type="range" id="vrTrimStart" min="0" max="1000" value="0"><span class="vl" id="vrTrimStartVal">0.0s</span></div>
+          <div class="cr"><label>Trim End</label><input type="range" id="vrTrimEnd" min="0" max="1000" value="1000"><span class="vl" id="vrTrimEndVal">--</span></div>
+          <div class="sub-title">Render</div>
+          <div class="vr-progress-wrap" id="vrProgressWrap" style="display:none">
+            <div class="vr-progress-bar" id="vrProgressBar"></div>
+            <span class="vr-progress-text" id="vrProgressText">0%</span>
+          </div>
+          <div class="br">
+            <button class="wb" onclick="startVideoRender()" id="vrRenderBtn">Render Video</button>
+            <button class="wb" onclick="cancelVideoRender()" id="vrCancelBtn" style="display:none">Cancel</button>
+            <button class="wb" onclick="previewCurrentFrame()">Preview Frame</button>
+          </div>
+          <div class="cr" id="vrStatus" style="font-size:10px;color:var(--darker)">Ready</div>
+        </fieldset>
+
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="ca sunken" id="canvasArea">
+      <div class="dh" id="dropHint"><span class="ic">&#9680;</span>Drop Image Here<br><small>or click Open...</small></div>
+      <canvas id="outputCanvas" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="ss" id="statusInfo">Ready</div>
+    <div class="ss sm" id="statusSize">--</div>
+    <div class="ss sm"><div class="zb">
+      <button class="wb" onclick="zoomOut()">-</button><span id="zoomLevel">100%</span>
+      <button class="wb" onclick="zoomIn()">+</button><button class="wb" onclick="zoomFit()">Fit</button>
+    </div></div>
+  </div>
+</div>
+
+<script>
+// ========== STATE ==========
+let srcImage=null, origW=0, origH=0, rotation=0, flipHorz=false;
+let aspectLocked=true, aspectRatio=1, zoomScale=1;
+let isProcessing=false, processQueued=false;
+let activeMode='dotraster', halftoneType='am', stochType='serpentine', ptShape='circle';
+let patternRotation=0, customMatrix=null, activeLayers=[true,true,true,true];
+let selectedPattern=0;
+
+const canvas=document.getElementById('outputCanvas');
+const ctx=canvas.getContext('2d',{willReadFrequently:true});
+
+// ========== FILE INPUT ==========
+document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0])});
+const canvasArea=document.getElementById('canvasArea');
+canvasArea.addEventListener('dragover',e=>{e.preventDefault();canvasArea.classList.add('dragover')});
+canvasArea.addEventListener('dragleave',()=>canvasArea.classList.remove('dragover'));
+canvasArea.addEventListener('drop',e=>{e.preventDefault();canvasArea.classList.remove('dragover');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+
+function loadFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>{const img=new Image();img.onload=()=>{
+    srcImage=img;origW=img.width;origH=img.height;
+    document.getElementById('outWidth').value=img.width;
+    document.getElementById('outHeight').value=img.height;
+    document.getElementById('scalePercent').value=100;
+    document.getElementById('scaleVal').textContent='100%';
+    aspectRatio=img.width/img.height;rotation=0;flipHorz=false;
+    document.getElementById('dropHint').style.display='none';
+    canvas.style.display='block';processImage();
+  };img.src=e.target.result};reader.readAsDataURL(file);
+}
+
+// ========== MODE / HALFTONE SWITCHING ==========
+function switchMode(el){
+  document.querySelectorAll('.mtab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');activeMode=el.dataset.mode;
+  document.querySelectorAll('.mp').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+activeMode).classList.add('active');
+  scheduleProcess();
+}
+function setHT(type,el){
+  halftoneType=type;
+  document.querySelectorAll('#panel-dotraster .gb:first-child .wb').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelectorAll('.htc').forEach(c=>c.style.display='none');
+  const c=document.getElementById('hc-'+type);if(c)c.style.display='';
+  scheduleProcess();
+}
+function setStoch(type,el){
+  stochType=type;
+  document.querySelectorAll('#panel-stochaster .gb:first-child .wb').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('sc-serpentine').style.display=type==='serpentine'?'':'none';
+  document.getElementById('sc-spiral').style.display=type==='spiral'?'':'none';
+  scheduleProcess();
+}
+function setPtS(shape,el){
+  ptShape=shape;
+  document.querySelectorAll('#panel-pointillist .gb:first-child .wb').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('ptPolyOpts').style.display=shape==='polygon'?'':'none';
+  document.getElementById('ptLineOpts').style.display=shape==='line'?'':'none';
+  scheduleProcess();
+}
+function showClrOpts(){
+  document.querySelectorAll('.co').forEach(c=>c.style.display='none');
+  const map={duotone:'clr-duotone',tritone:'clr-tritone',posterize:'clr-posterize','hue-shift':'clr-hueshift',colorize:'clr-colorize','rgb-split':'clr-rgbsplit'};
+  const v=document.getElementById('clrMode').value;
+  if(map[v])document.getElementById(map[v]).style.display='';
+  scheduleProcess();
+}
+
+// ========== SIZE ==========
+function toggleLock(){aspectLocked=!aspectLocked;document.getElementById('lockBtn').textContent=aspectLocked?'\u{1F517}':'\u{1F513}'}
+document.getElementById('outWidth').addEventListener('input',()=>{if(aspectLocked&&srcImage)document.getElementById('outHeight').value=Math.round((parseInt(document.getElementById('outWidth').value)||1)/aspectRatio)});
+document.getElementById('outHeight').addEventListener('input',()=>{if(aspectLocked&&srcImage)document.getElementById('outWidth').value=Math.round((parseInt(document.getElementById('outHeight').value)||1)*aspectRatio)});
+document.getElementById('scalePercent').addEventListener('input',e=>{const p=parseInt(e.target.value);document.getElementById('scaleVal').textContent=p+'%';if(srcImage){document.getElementById('outWidth').value=Math.round(origW*p/100);document.getElementById('outHeight').value=Math.round(origH*p/100)}});
+function applyResize(){scheduleProcess()}
+function resetSize(){if(!srcImage)return;document.getElementById('outWidth').value=origW;document.getElementById('outHeight').value=origH;document.getElementById('scalePercent').value=100;document.getElementById('scaleVal').textContent='100%';scheduleProcess()}
+function presetSize(w,h){document.getElementById('outWidth').value=w;document.getElementById('outHeight').value=h;aspectRatio=w/h;scheduleProcess()}
+function rotateImg(d){rotation=d;scheduleProcess()}
+function flipH(){flipHorz=!flipHorz;scheduleProcess()}
+function aP(a){document.getElementById('amAngle').value=a;updateVals();scheduleProcess()}
+function patRot(r){patternRotation=r;scheduleProcess()}
+
+// ========== LAYERS ==========
+function toggleLayer(el){const i=parseInt(el.dataset.layer);activeLayers[i]=!activeLayers[i];el.classList.toggle('active');scheduleProcess()}
+
+// ========== PT COLOR ==========
+function swapPtColors(){const a=document.getElementById('ptDotColor').value,b=document.getElementById('ptBGColor').value;document.getElementById('ptDotColor').value=b;document.getElementById('ptBGColor').value=a;updateVals();scheduleProcess()}
+function randomPtColor(){document.getElementById('ptDotColor').value='#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');updateVals();scheduleProcess()}
+
+// ========== PT SIZE RANGE TOGGLE ==========
+document.getElementById('ptSizeRange').addEventListener('change',function(){document.getElementById('ptSizeMinRow').style.display=this.checked?'flex':'none';scheduleProcess()});
+
+// ========== RD PRESETS ==========
+function applyRDPreset(){
+  const presets={
+    bubbles:[200,35,12,47,15],chaos:[160,80,75,63,25],coral:[170,55,62,61,20],
+    fingerprint:[160,60,55,62,30],daotian:[180,45,40,58,20],loops:[170,60,39,58,20],
+    mazes:[170,55,100,59,20],spots:[180,40,30,62,15],turing:[165,55,42,59,25],
+    worms:[155,60,78,61,20],zebra:[175,50,26,51,30]
+  };
+  const s=document.getElementById('rdPreset').value;
+  if(presets[s]){
+    document.getElementById('rdU').value=presets[s][0];document.getElementById('rdV').value=presets[s][1];
+    document.getElementById('rdF').value=presets[s][2];document.getElementById('rdK').value=presets[s][3];
+    document.getElementById('rdGrow').value=presets[s][4];
+    updateVals();generateLayerThumbnails();scheduleProcess();
+  }
+}
+
+// ========== PATTERN LIBRARY ==========
+function initPatternLibrary(){
+  const grid=document.getElementById('patLibrary');
+  grid.innerHTML='';
+  // Generate 32 predefined patterns as thumbnails
+  const patterns=['dots','lines-h','lines-v','lines-d','crosshatch','zigzag','wave','hex',
+    'checker','diamond-p','circle-p','star-p','brick','basket','herring','spiral-p',
+    'tri','honeycomb','scale','plaid','mesh','ring','cross-p','arrow',
+    'dot-lg','line-thick','diag-thick','grid-p','noise-p','scatter','ripple','maze-p'];
+  for(let i=0;i<patterns.length;i++){
+    const cell=document.createElement('div');
+    cell.className='pat-cell'+(i===0?' active':'');
+    const c=document.createElement('canvas');c.width=24;c.height=24;
+    drawPatternThumb(c,i);
+    cell.appendChild(c);
+    cell.onclick=()=>{document.querySelectorAll('.pat-cell').forEach(c=>c.classList.remove('active'));cell.classList.add('active');selectedPattern=i;scheduleProcess()};
+    grid.appendChild(cell);
+  }
+}
+
+function drawPatternThumb(c,idx){
+  const ctx2=c.getContext('2d');const s=24;
+  ctx2.fillStyle='#fff';ctx2.fillRect(0,0,s,s);ctx2.fillStyle='#000';
+  for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+    const v=getLibPatternValue(x,y,idx,8);
+    if(v<0.5){ctx2.fillRect(x,y,1,1)}
+  }
+}
+
+function getLibPatternValue(x,y,idx,sz){
+  const mx=((x%sz)+sz)%sz, my=((y%sz)+sz)%sz;
+  switch(idx){
+    case 0:{const cx=mx-sz/2,cy=my-sz/2;return Math.sqrt(cx*cx+cy*cy)/(sz*0.7)}
+    case 1:return my/sz;
+    case 2:return mx/sz;
+    case 3:return((mx+my)%sz)/sz;
+    case 4:return Math.min(mx/sz,my/sz);
+    case 5:{const zy=my<sz/2?my:sz-my;return((mx+zy)%sz)/sz}
+    case 6:return(Math.sin(mx/sz*Math.PI*2)*0.5+0.5+my/sz)%1;
+    case 7:{const r=Math.floor(y/sz),o=(r%2)*(sz/2),hx=(x+o)%sz-sz/2,hy=my-sz/2;return Math.sqrt(hx*hx+hy*hy)/(sz*0.7)}
+    case 8:return((Math.floor(x/4)+Math.floor(y/4))%2)?0.8:0.2;
+    case 9:{const dx=Math.abs(mx-sz/2),dy=Math.abs(my-sz/2);return(dx+dy)/(sz)}
+    case 10:{const cx=mx-sz/2,cy=my-sz/2,d=Math.sqrt(cx*cx+cy*cy);return Math.abs(Math.sin(d/sz*Math.PI*3))}
+    case 11:{const a=Math.atan2(my-sz/2,mx-sz/2),d=Math.sqrt((mx-sz/2)**2+(my-sz/2)**2);return d<sz*0.4?Math.abs(Math.cos(a*2.5)):1}
+    case 12:{return(my%8<4)?(mx%8)/8:(((mx+4)%8))/8}
+    case 13:{return((mx%6<3)!==(my%6<3))?mx/sz:my/sz}
+    case 14:{const v=(mx+((my%8<4)?my:-my));return((v%sz)+sz)%sz/sz}
+    case 15:{const cx=mx-sz/2,cy=my-sz/2,a=Math.atan2(cy,cx),d=Math.sqrt(cx*cx+cy*cy);return(a/Math.PI*0.5+0.5+d/sz)%1}
+    case 16:{const ty=my*2/sz,tx=mx/sz;return ty<1?(tx<0.5?tx*2:2-tx*2):(tx<0.5?1-tx*2:tx*2-1)}
+    case 17:{const r=Math.floor(y/(sz*0.866)),o=(r%2)*(sz/2),hx=(x+o)%(sz)-sz/2,hy=(y%(sz*0.866))-sz*0.433;const d=Math.sqrt(hx*hx+hy*hy);return d/(sz*0.5)<0.7?0:1}
+    case 18:{return(Math.sin(mx/sz*Math.PI)*0.5+0.5)*(my/sz)}
+    case 19:{return Math.min((mx%4)/4,(my%4)/4)+Math.max((mx%8)/8,(my%8)/8)*0.5}
+    case 20:{const g=(mx%6===0||my%6===0)?0:1;return g}
+    case 21:{const cx=mx-sz/2,cy=my-sz/2,d=Math.sqrt(cx*cx+cy*cy);return Math.abs(d/(sz*0.3)%1-0.5)*2}
+    case 22:{return(Math.abs(mx-sz/2)<sz*0.15||Math.abs(my-sz/2)<sz*0.15)?0:1}
+    case 23:{return((mx+my*2)%sz)/sz}
+    case 24:{const cx=mx-sz/2,cy=my-sz/2;return Math.sqrt(cx*cx+cy*cy)/(sz*0.35)>1?1:0}
+    case 25:return Math.abs(my-sz/2)<sz*0.2?0:1;
+    case 26:return Math.abs(mx+my-sz)<sz*0.3?0:Math.abs(mx+my)?1:0;
+    case 27:return(mx%(sz/2)<1||my%(sz/2)<1)?0:1;
+    case 28:return(Math.sin(mx*1.5)*Math.cos(my*1.5)+1)/2;
+    case 29:{const r=((mx*7+my*13)%17)/17;return r}
+    case 30:return(Math.sin(Math.sqrt((mx-sz/2)**2+(my-sz/2)**2)*0.8)+1)/2;
+    case 31:{const v=((mx^my)%sz)/sz;return v}
+    default:return mx/sz;
+  }
+}
+
+// ========== CUSTOM MATRIX ==========
+function initMatrix(){
+  const sz=parseInt(document.getElementById('matrixSize').value)||8;
+  customMatrix=new Array(sz*sz).fill(0);
+  const grid=document.getElementById('matrixGrid');
+  grid.innerHTML='';
+  grid.style.gridTemplateColumns=`repeat(${sz},12px)`;
+  for(let i=0;i<sz*sz;i++){
+    const cell=document.createElement('div');cell.className='mc2';
+    cell.addEventListener('mousedown',()=>{
+      const step=1/(sz*sz);
+      customMatrix[i]=Math.min(1,customMatrix[i]+step);
+      cell.style.background=`rgb(${Math.round((1-customMatrix[i])*255)},${Math.round((1-customMatrix[i])*255)},${Math.round((1-customMatrix[i])*255)})`;
+    });
+    cell.addEventListener('contextmenu',e=>{
+      e.preventDefault();
+      const step=1/(sz*sz);
+      customMatrix[i]=Math.max(0,customMatrix[i]-step);
+      cell.style.background=`rgb(${Math.round((1-customMatrix[i])*255)},${Math.round((1-customMatrix[i])*255)},${Math.round((1-customMatrix[i])*255)})`;
+    });
+    grid.appendChild(cell);
+  }
+}
+function useCustomPattern(){selectedPattern=-1;document.querySelectorAll('.pat-cell').forEach(c=>c.classList.remove('active'));scheduleProcess()}
+
+// ========== LAYER THUMBNAILS ==========
+function generateLayerThumbnails(){
+  const thumbs=document.querySelectorAll('.layer-thumb canvas');
+  // Simple visual representation of each layer
+  const labels=['Lines','Short','Points','Dots'];
+  thumbs.forEach((c,i)=>{
+    const ctx2=c.getContext('2d');
+    ctx2.fillStyle='#888';ctx2.fillRect(0,0,48,48);ctx2.fillStyle='#fff';
+    const seed=i*100+parseInt(document.getElementById('rdF').value);
+    for(let y=0;y<48;y++)for(let x=0;x<48;x++){
+      const n=fract(Math.sin(x*12.9898+y*78.233+seed)*43758.5453);
+      const thresh=[0.55,0.45,0.35,0.25][i];
+      if(n<thresh)ctx2.fillRect(x,y,1,1);
+    }
+  });
+}
+
+// ========== ZOOM ==========
+function zoomIn(){zoomScale=Math.min(zoomScale*1.25,5);applyZoom()}
+function zoomOut(){zoomScale=Math.max(zoomScale/1.25,0.1);applyZoom()}
+function zoomFit(){zoomScale=1;canvas.style.maxWidth='98%';canvas.style.maxHeight='98%';canvas.style.width='';applyZoom()}
+function applyZoom(){document.getElementById('zoomLevel').textContent=Math.round(zoomScale*100)+'%';if(zoomScale===1){canvas.style.maxWidth='98%';canvas.style.maxHeight='98%';canvas.style.width=''}else{canvas.style.maxWidth='none';canvas.style.maxHeight='none';canvas.style.width=(canvas.width*zoomScale)+'px'}}
+
+// ========== BIND INPUTS ==========
+document.querySelectorAll('input[type="range"],select,input[type="checkbox"],input[type="color"]').forEach(i=>{
+  i.addEventListener('input',()=>{updateVals();scheduleProcess()});
+  i.addEventListener('change',()=>{updateVals();scheduleProcess()});
+});
+
+function updateVals(){
+  const m={amLPIVal:['amLPI',' lpi'],amAngleVal:['amAngle','°'],amShiftXVal:['amShiftX',''],amShiftYVal:['amShiftY',''],
+    patOffXVal:['patOffX',''],patOffYVal:['patOffY',''],errorStrengthVal:['errorStrength','%'],orderedLevelsVal:['orderedLevels',''],
+    thresholdValD:['thresholdVal',''],brightnessVal:['brightness',''],contrastVal:['contrast',''],sharpenVal:['sharpen',' px'],
+    sharpIntVal:['sharpInt','%'],stochAngleVal:['stochAngle','°'],stochLPIVal:['stochLPI',''],
+    rdUVal:['rdU',''],rdVVal:['rdV',''],rdFVal:['rdF',''],rdKVal:['rdK',''],rdGrowVal:['rdGrow',''],
+    spiralArmsVal:['spiralArms',''],spiralWrapVal:['spiralWrap',''],spiralSpacingVal:['spiralSpacing',''],spiralRadiusVal:['spiralRadius',''],
+    ptSizeVal:['ptSize',''],ptSizeMinVal:['ptSizeMin',''],ptVerticesVal:['ptVertices',''],ptWarpVal:['ptWarp',''],
+    ptLengthVal:['ptLength',''],ptSegmentsVal:['ptSegments',''],ptLineWarpVal:['ptLineWarp',''],ptAngleVal:['ptAngle','°'],
+    ptSpaceMinVal:['ptSpaceMin',''],ptSpaceMaxVal:['ptSpaceMax',''],ptPhasesVal:['ptPhases',''],ptAlphaVal:['ptAlpha',''],
+    posterizeLevelsVal:['posterizeLevels',''],hueShiftVal:['hueShift','°'],satShiftVal:['satShift','%'],
+    colorizeStrVal:['colorizeStr','%'],rgbOffXVal:['rgbOffX',''],rgbOffYVal:['rgbOffY',''],
+    dgShadowVal:['dgShadow','%'],dgHighlightVal:['dgHighlight','%'],patternSizeVal:['patternSize',''],patternIntensityVal:['patternIntensity','']
+  };
+  for(const[d,[s,suf]]of Object.entries(m)){const el=document.getElementById(d),se=document.getElementById(s);if(el&&se)el.textContent=se.value+suf}
+  document.getElementById('gammaVal').textContent=(parseInt(document.getElementById('gamma').value)/100).toFixed(1);
+  document.getElementById('noiseStdDevVal').textContent=(parseInt(document.getElementById('noiseStdDev').value)/100).toFixed(2);
+  document.getElementById('noiseSizeVal').textContent=document.getElementById('noiseSize').value;
+  document.getElementById('scaleVal').textContent=document.getElementById('scalePercent').value+'%';
+  document.getElementById('ptDotHex').textContent=document.getElementById('ptDotColor').value.toUpperCase();
+  document.getElementById('ptBGHex').textContent=document.getElementById('ptBGColor').value.toUpperCase();
+}
+
+// ========== WEB WORKER + WASM ==========
+const worker = new Worker('/worker.js', { type: 'module' });
+let workerReady = false;
+let pendingProcess = false;
+let processId = 0;
+worker.onmessage = function(e) {
+  if (e.data.type === 'ready') {
+    workerReady = true;
+    document.getElementById('statusInfo').textContent = 'WASM Ready';
+    if (pendingProcess) { pendingProcess = false; processImage(); }
+    return;
+  }
+  if (e.data.type === 'result') {
+    if (videoRendering) return; // let video frame handler deal with it
+    if (e.data.id !== processId) return; // stale result
+    const outW = parseInt(document.getElementById('outWidth').value) || origW;
+    const outH = parseInt(document.getElementById('outHeight').value) || origH;
+    const sw = rotation === 90 || rotation === 270;
+    const cw = sw ? outH : outW, ch = sw ? outW : outH;
+    const imgData = new ImageData(new Uint8ClampedArray(e.data.data), cw, ch);
+    canvas.width = cw; canvas.height = ch;
+    ctx.putImageData(imgData, 0, 0);
+    applyZoom();
+    const t1 = performance.now();
+    document.getElementById('statusInfo').textContent =
+      activeMode.charAt(0).toUpperCase() + activeMode.slice(1) +
+      (halftoneType && activeMode === 'dotraster' ? ' / ' + halftoneType.toUpperCase() : '') +
+      ' (' + Math.round(t1 - workerStartTime) + 'ms)';
+    document.getElementById('statusSize').textContent = cw + ' x ' + ch;
+    isProcessing = false;
+    if (processQueued) { processQueued = false; processImage(); }
+    return;
+  }
+  if (e.data.type === 'error') {
+    console.error('Worker error:', e.data.msg);
+    document.getElementById('statusInfo').textContent = 'Error: ' + e.data.msg;
+    isProcessing = false;
+  }
+};
+let workerStartTime = 0;
+
+// ========== SCHEDULING ==========
+let pTimer=null;
+function scheduleProcess(){if(pTimer)clearTimeout(pTimer);pTimer=setTimeout(()=>processImage(),60)}
+
+// ========== MAIN PROCESSING ==========
+function processImage(){
+  if(!srcImage)return;
+  if(!workerReady){pendingProcess=true;return}
+  if(isProcessing){processQueued=true;return}
+  isProcessing=true;
+  workerStartTime=performance.now();
+  processId++;
+
+  const outW=parseInt(document.getElementById('outWidth').value)||origW;
+  const outH=parseInt(document.getElementById('outHeight').value)||origH;
+  const sw=rotation===90||rotation===270, cw=sw?outH:outW, ch=sw?outW:outH;
+
+  // Draw source to temp canvas on main thread (need DOM access)
+  canvas.width=cw;canvas.height=ch;
+  ctx.save();ctx.translate(cw/2,ch/2);ctx.rotate(rotation*Math.PI/180);if(flipHorz)ctx.scale(-1,1);
+  ctx.drawImage(srcImage,-outW/2,-outH/2,outW,outH);ctx.restore();
+  const imgd=ctx.getImageData(0,0,cw,ch);
+  const imageData=new Uint8Array(imgd.data.buffer);
+
+  // Extract original RGB channels
+  const pxCount=cw*ch;
+  const oR=new Uint8Array(pxCount),oG=new Uint8Array(pxCount),oB=new Uint8Array(pxCount);
+  for(let i=0;i<pxCount;i++){oR[i]=imageData[i*4];oG[i]=imageData[i*4+1];oB[i]=imageData[i*4+2]}
+
+  // Collect all params
+  const shapeMap={circle:0,euclidian:1,square:2,line:3};
+  const params={
+    activeMode,halftoneType,stochType,ptShape,
+    grayMethod:document.getElementById('grayMethod').value,
+    brightness:parseInt(document.getElementById('brightness').value),
+    contrast:parseInt(document.getElementById('contrast').value),
+    gamma:parseInt(document.getElementById('gamma').value)/100,
+    sharpenAmount:parseInt(document.getElementById('sharpen').value)*parseInt(document.getElementById('sharpInt').value)/100/5,
+    invert:document.getElementById('invertCheck').checked,
+    dgShadow:parseInt(document.getElementById('dgShadow').value)/100,
+    dgHighlight:parseInt(document.getElementById('dgHighlight').value)/100,
+    dotColor:hex2rgb(document.getElementById('dotColor').value),
+    bgColor:hex2rgb(document.getElementById('bgColor').value),
+    transparentBg:document.getElementById('transparentBg').checked,
+    // AM
+    amLPI:parseInt(document.getElementById('amLPI').value),
+    amAngle:parseInt(document.getElementById('amAngle').value),
+    amShape:shapeMap[document.getElementById('amShape').value]||0,
+    amLayout:document.getElementById('amLayout').value==='benday'?1:0,
+    amShiftX:parseInt(document.getElementById('amShiftX').value),
+    amShiftY:parseInt(document.getElementById('amShiftY').value),
+    // Pattern
+    patternIdx:selectedPattern,
+    patOffX:parseInt(document.getElementById('patOffX').value),
+    patOffY:parseInt(document.getElementById('patOffY').value),
+    patAngle:patternRotation,
+    customMatrix:customMatrix?new Float32Array(customMatrix):null,
+    customMatrixSize:customMatrix?Math.round(Math.sqrt(customMatrix.length)):0,
+    // Error diffusion
+    errorAlgo:document.getElementById('errorAlgo').value,
+    errorStrength:parseInt(document.getElementById('errorStrength').value)/100,
+    // Ordered
+    orderedSize:parseInt(document.getElementById('orderedSize').value),
+    orderedLevels:parseInt(document.getElementById('orderedLevels').value),
+    // Noise
+    noiseType:document.getElementById('noiseType').value,
+    noiseStdDev:parseInt(document.getElementById('noiseStdDev').value)/100,
+    noiseSize:parseInt(document.getElementById('noiseSize').value),
+    noiseDots:document.getElementById('noiseDots').value,
+    // Threshold
+    thresholdVal:parseInt(document.getElementById('thresholdVal').value)/255,
+    // Stochaster
+    stochLPI:parseInt(document.getElementById('stochLPI').value),
+    stochAngle:parseInt(document.getElementById('stochAngle').value),
+    stochDotArea:parseInt(document.getElementById('stochDotArea').value),
+    stochTint:{black:0,white:1,blend:2}[document.getElementById('stochTint').value]||0,
+    stochInvert:document.getElementById('stochInvert').checked,
+    layers:activeLayers.map(l=>l?1:0),
+    rdU:parseInt(document.getElementById('rdU').value)/1000,
+    rdV:parseInt(document.getElementById('rdV').value)/1000,
+    rdF:parseInt(document.getElementById('rdF').value)/1000,
+    rdK:parseInt(document.getElementById('rdK').value)/1000,
+    rdGrow:parseInt(document.getElementById('rdGrow').value),
+    spiralArms:parseInt(document.getElementById('spiralArms').value),
+    spiralWrap:parseInt(document.getElementById('spiralWrap').value),
+    spiralSpacing:parseInt(document.getElementById('spiralSpacing').value),
+    spiralRadius:parseInt(document.getElementById('spiralRadius').value),
+    spiralDir:document.getElementById('spiralDir').value,
+    spiralContour:document.getElementById('spiralContour').value,
+    // Pointillist
+    ptDotColor:hex2rgb(document.getElementById('ptDotColor').value),
+    ptBGColor:hex2rgb(document.getElementById('ptBGColor').value),
+    ptAlpha:parseInt(document.getElementById('ptAlpha').value),
+    ptColorMode:document.getElementById('ptColorMode').value,
+    ptSize:parseInt(document.getElementById('ptSize').value),
+    ptSizeRange:document.getElementById('ptSizeRange').checked,
+    ptSizeMin:parseInt(document.getElementById('ptSizeMin').value),
+    ptSpaceMin:parseInt(document.getElementById('ptSpaceMin').value),
+    ptSpaceMax:parseInt(document.getElementById('ptSpaceMax').value),
+    ptPhases:parseInt(document.getElementById('ptPhases').value),
+    ptOverpaint:document.getElementById('ptOverpaint').checked,
+    ptHideZone:document.getElementById('ptHideZone').checked,
+    ptHideMin:parseInt(document.getElementById('ptHideMin').value)/255,
+    ptAA:document.getElementById('ptAA').checked,
+    ptAngle:parseInt(document.getElementById('ptAngle').value)*Math.PI/180,
+    ptAngleRange:document.getElementById('ptAngleRange').checked,
+    ptAngleRandom:document.getElementById('ptAngleRandom').checked,
+    ptVertices:parseInt(document.getElementById('ptVertices').value),
+    ptWarp:parseInt(document.getElementById('ptWarp').value)/100,
+    ptLineStyle:document.getElementById('ptLineStyle').value,
+    ptLength:parseInt(document.getElementById('ptLength').value),
+    ptSegments:parseInt(document.getElementById('ptSegments').value),
+    ptLineWarp:parseInt(document.getElementById('ptLineWarp').value)/100,
+    ptLenRandom:document.getElementById('ptLenRandom').checked,
+    // Coloraster
+    clrMode:document.getElementById('clrMode').value,
+    clrC1:hex2rgb(document.getElementById('duoShadow').value),
+    clrC2:hex2rgb(document.getElementById('duoHighlight').value),
+    clrC3:hex2rgb(document.getElementById('triHighlight').value),
+    clrParam1:parseInt(document.getElementById('posterizeLevels').value),
+    clrParam2:parseInt(document.getElementById('satShift').value)/100,
+    clrParam3:parseInt(document.getElementById('colorizeStr').value)/100,
+  };
+  // Fix coloraster params based on mode
+  if(params.clrMode==='tritone'){params.clrC1=hex2rgb(document.getElementById('triShadow').value);params.clrC2=hex2rgb(document.getElementById('triMid').value);params.clrC3=hex2rgb(document.getElementById('triHighlight').value)}
+  if(params.clrMode==='hue-shift'){params.clrParam1=parseInt(document.getElementById('hueShift').value);params.clrParam2=parseInt(document.getElementById('satShift').value)/100}
+  if(params.clrMode==='colorize'){params.clrC1=hex2rgb(document.getElementById('colorizeHue').value)}
+  if(params.clrMode==='rgb-split'){params.clrParam1=parseInt(document.getElementById('rgbOffX').value);params.clrParam2=parseInt(document.getElementById('rgbOffY').value)}
+
+  // Send to worker (transfer buffers for zero-copy)
+  const msg={type:'process',id:processId,imageData,oR,oG,oB,cw,ch,params};
+  worker.postMessage(msg,[imageData.buffer,oR.buffer,oG.buffer,oB.buffer]);
+
+  document.getElementById('statusInfo').textContent='Processing...';
+}
+
+// ========== JS processing functions removed — now handled by Rust WASM in Web Worker ==========
+
+// ========== HELPERS ==========
+function hex2rgb(h){return{r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)}}
+function fract(x){return x-Math.floor(x)}
+
+// ========== EXPORT / RESET ==========
+function exportPNG(){if(!srcImage)return;const l=document.createElement('a');l.download='raster-studio.png';l.href=canvas.toDataURL('image/png');l.click()}
+function resetAll(){
+  ['brightness','contrast','sharpen','dgShadow','dgHighlight','amShiftX','amShiftY'].forEach(id=>document.getElementById(id).value=0);
+  document.getElementById('gamma').value=100;document.getElementById('sharpInt').value=80;
+  document.getElementById('invertCheck').checked=false;
+  document.getElementById('dotColor').value='#000000';document.getElementById('bgColor').value='#ffffff';
+  document.getElementById('transparentBg').checked=false;
+  rotation=0;flipHorz=false;if(srcImage)resetSize();updateVals();scheduleProcess();
+}
+
+// ========== KEYBOARD ==========
+document.addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey){if(e.key==='='){e.preventDefault();zoomIn()}if(e.key==='-'){e.preventDefault();zoomOut()}if(e.key==='0'){e.preventDefault();zoomFit()}if(e.key==='s'){e.preventDefault();exportPNG()}if(e.key==='o'){e.preventDefault();document.getElementById('fileInput').click()}}});
+
+// ========== VIDEO RENDER ==========
+let videoEl = null, videoLoaded = false, videoRendering = false, videoRenderCancel = false;
+let renderedFrames = [], renderedBlob = null;
+
+document.getElementById('videoInput').addEventListener('change', e => {
+  if (e.target.files[0]) loadVideo(e.target.files[0]);
+});
+
+// Also allow video drag-drop
+canvasArea.addEventListener('drop', e2 => {
+  const f = e2.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) { e2.preventDefault(); loadVideo(f); }
+}, true);
+
+function loadVideo(file) {
+  const url = URL.createObjectURL(file);
+  videoEl = document.getElementById('vrVideo');
+  videoEl.src = url;
+  videoEl.load();
+  videoEl.onloadedmetadata = () => {
+    videoLoaded = true;
+    document.getElementById('videoPanel').style.display = '';
+    document.getElementById('miExportVideo').style.display = '';
+    document.getElementById('vrHint').style.display = 'none';
+    videoEl.style.display = '';
+
+    // Set trim range
+    const dur = videoEl.duration;
+    document.getElementById('vrTrimEnd').max = Math.round(dur * 10);
+    document.getElementById('vrTrimEnd').value = Math.round(dur * 10);
+    document.getElementById('vrTrimStart').max = Math.round(dur * 10);
+    document.getElementById('vrTrimEndVal').textContent = dur.toFixed(1) + 's';
+    document.getElementById('vrTrimStartVal').textContent = '0.0s';
+
+    updateVideoTime();
+    generateTimeline();
+
+    // Use first frame as source image for preview
+    videoEl.currentTime = 0;
+    videoEl.onseeked = () => {
+      grabVideoFrame();
+      videoEl.onseeked = () => { updateVideoTime(); updatePlayhead(); };
+    };
+
+    document.getElementById('statusInfo').textContent = 'Video loaded: ' + file.name + ' (' + Math.round(dur) + 's)';
+  };
+  videoEl.onerror = () => {
+    document.getElementById('statusInfo').textContent = 'Error loading video';
+  };
+}
+
+function grabVideoFrame() {
+  if (!videoEl || !videoLoaded) return;
+  const quality = document.getElementById('vrQuality').value;
+  let vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  if (quality === 'half') { vw = Math.round(vw / 2); vh = Math.round(vh / 2); }
+  else if (quality === 'quarter') { vw = Math.round(vw / 4); vh = Math.round(vh / 4); }
+
+  // Draw video frame to temp canvas, create image
+  const tc = document.createElement('canvas');
+  tc.width = vw; tc.height = vh;
+  const tctx = tc.getContext('2d');
+  tctx.drawImage(videoEl, 0, 0, vw, vh);
+
+  // Use as source image
+  const img = new Image();
+  img.onload = () => {
+    srcImage = img; origW = img.width; origH = img.height;
+    document.getElementById('outWidth').value = img.width;
+    document.getElementById('outHeight').value = img.height;
+    aspectRatio = img.width / img.height;
+    document.getElementById('dropHint').style.display = 'none';
+    canvas.style.display = 'block';
+    processImage();
+  };
+  img.src = tc.toDataURL();
+}
+
+function previewCurrentFrame() {
+  if (!videoLoaded) return;
+  grabVideoFrame();
+}
+
+function generateTimeline() {
+  if (!videoEl || !videoLoaded) return;
+  const tlCanvas = document.getElementById('vrTimelineCanvas');
+  const dur = videoEl.duration;
+  const numThumbs = Math.min(20, Math.max(5, Math.floor(dur)));
+  tlCanvas.width = numThumbs * 40;
+  const tlCtx = tlCanvas.getContext('2d');
+  const tw = tlCanvas.width / numThumbs;
+
+  let idx = 0;
+  function drawNext() {
+    if (idx >= numThumbs) return;
+    const t = (idx / numThumbs) * dur;
+    videoEl.currentTime = t;
+    videoEl.onseeked = () => {
+      tlCtx.drawImage(videoEl, idx * tw, 0, tw, 36);
+      idx++;
+      drawNext();
+    };
+  }
+  drawNext();
+}
+
+function seekVideo(e) {
+  if (!videoEl || !videoLoaded) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  videoEl.currentTime = pct * videoEl.duration;
+  grabVideoFrame();
+}
+
+function updatePlayhead() {
+  if (!videoEl || !videoLoaded) return;
+  const pct = videoEl.currentTime / videoEl.duration * 100;
+  document.getElementById('vrPlayhead').style.left = pct + '%';
+}
+
+function updateVideoTime() {
+  if (!videoEl) return;
+  const cur = videoEl.currentTime, dur = videoEl.duration || 0;
+  const fmt = t => { const m = Math.floor(t / 60); const s = Math.floor(t % 60); return m + ':' + String(s).padStart(2, '0'); };
+  document.getElementById('vrTime').textContent = fmt(cur) + ' / ' + fmt(dur);
+}
+
+// Trim slider events
+document.getElementById('vrTrimStart').addEventListener('input', function() {
+  document.getElementById('vrTrimStartVal').textContent = (this.value / 10).toFixed(1) + 's';
+});
+document.getElementById('vrTrimEnd').addEventListener('input', function() {
+  document.getElementById('vrTrimEndVal').textContent = (this.value / 10).toFixed(1) + 's';
+});
+
+// Playback controls
+let vrPlayInterval = null;
+function vrPlay() {
+  if (!videoLoaded) return;
+  const fps = parseInt(document.getElementById('vrFPS').value);
+  vrPause();
+  vrPlayInterval = setInterval(() => {
+    const endT = parseFloat(document.getElementById('vrTrimEnd').value) / 10;
+    if (videoEl.currentTime >= endT) { vrPause(); return; }
+    videoEl.currentTime = Math.min(videoEl.currentTime + 1 / fps, endT);
+    grabVideoFrame();
+    updatePlayhead();
+    updateVideoTime();
+  }, 1000 / fps);
+}
+
+function vrPause() {
+  if (vrPlayInterval) { clearInterval(vrPlayInterval); vrPlayInterval = null; }
+}
+
+function vrStop() {
+  vrPause();
+  if (videoEl && videoLoaded) {
+    const startT = parseFloat(document.getElementById('vrTrimStart').value) / 10;
+    videoEl.currentTime = startT;
+    grabVideoFrame();
+    updatePlayhead();
+    updateVideoTime();
+  }
+}
+
+function vrStepBack() {
+  if (!videoLoaded) return;
+  const fps = parseInt(document.getElementById('vrFPS').value);
+  videoEl.currentTime = Math.max(0, videoEl.currentTime - 1 / fps);
+  grabVideoFrame(); updatePlayhead(); updateVideoTime();
+}
+
+function vrStepFwd() {
+  if (!videoLoaded) return;
+  const fps = parseInt(document.getElementById('vrFPS').value);
+  videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 1 / fps);
+  grabVideoFrame(); updatePlayhead(); updateVideoTime();
+}
+
+// ========== FFMPEG.WASM LOADER ==========
+let ffmpegLoaded = false, ffmpegInstance = null;
+
+async function loadFFmpeg() {
+  if (ffmpegLoaded && ffmpegInstance) return ffmpegInstance;
+  document.getElementById('vrStatus').textContent = 'Loading FFmpeg.wasm...';
+  try {
+    // Load the UMD wrapper via <script> tag so its publicPath resolves to /ffmpeg/
+    if (!window.FFmpegWASM) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/ffmpeg/ffmpeg.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load ffmpeg.js'));
+        document.head.appendChild(s);
+      });
+    }
+    const { FFmpeg } = window.FFmpegWASM;
+    const ffmpeg = new FFmpeg();
+    ffmpeg.on('progress', ({ progress }) => {
+      if (progress >= 0) document.getElementById('vrStatus').textContent = 'FFmpeg encoding... ' + Math.round(progress * 100) + '%';
+    });
+
+    // Load core from local /ffmpeg/ directory
+    // The 814.ffmpeg.js worker will be auto-resolved relative to /ffmpeg/ffmpeg.js
+    await ffmpeg.load({
+      coreURL: '/ffmpeg/ffmpeg-core.js',
+      wasmURL: '/ffmpeg/ffmpeg-core.wasm',
+    });
+    ffmpegInstance = ffmpeg;
+    ffmpegLoaded = true;
+    document.getElementById('vrStatus').textContent = 'FFmpeg ready';
+    return ffmpeg;
+  } catch (e) {
+    console.error('FFmpeg load error:', e);
+    document.getElementById('vrStatus').textContent = 'FFmpeg load failed: ' + String(e);
+    throw e;
+  }
+}
+
+// ========== VIDEO RENDER ENGINE ==========
+async function startVideoRender() {
+  if (!videoLoaded || videoRendering) return;
+
+  const format = document.getElementById('vrFormat').value;
+  const needsFFmpeg = format === 'mp4' || format === 'gif';
+
+  // Pre-load FFmpeg for MP4/GIF
+  if (needsFFmpeg) {
+    try { await loadFFmpeg(); } catch (e) {
+      alert('Cannot load FFmpeg.wasm for ' + format.toUpperCase() + ' encoding.\nFalling back to WebM.\n\nError: ' + e.message);
+      document.getElementById('vrFormat').value = 'webm';
+      return;
+    }
+  }
+
+  videoRendering = true;
+  videoRenderCancel = false;
+  renderedFrames = [];
+
+  const fps = parseInt(document.getElementById('vrFPS').value);
+  const startT = parseFloat(document.getElementById('vrTrimStart').value) / 10;
+  const endT = parseFloat(document.getElementById('vrTrimEnd').value) / 10;
+  const totalFrames = Math.ceil((endT - startT) * fps);
+
+  document.getElementById('vrProgressWrap').style.display = '';
+  document.getElementById('vrCancelBtn').style.display = '';
+  document.getElementById('vrRenderBtn').style.display = 'none';
+  document.getElementById('vrStatus').textContent = 'Rendering... 0/' + totalFrames;
+
+  const quality = document.getElementById('vrQuality').value;
+  let vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  if (quality === 'half') { vw = Math.round(vw / 2); vh = Math.round(vh / 2); }
+  else if (quality === 'quarter') { vw = Math.round(vw / 4); vh = Math.round(vh / 4); }
+
+  // Create offscreen canvas for frame extraction
+  const frameCanvas = document.createElement('canvas');
+  frameCanvas.width = vw; frameCanvas.height = vh;
+  const frameCtx = frameCanvas.getContext('2d');
+
+  // Create output recording canvas
+  const outW = parseInt(document.getElementById('outWidth').value) || vw;
+  const outH = parseInt(document.getElementById('outHeight').value) || vh;
+  const sw = rotation === 90 || rotation === 270;
+  const cw = sw ? outH : outW, ch = sw ? outW : outH;
+
+  // Ensure even dimensions for H.264
+  const cwEven = cw % 2 === 0 ? cw : cw + 1;
+  const chEven = ch % 2 === 0 ? ch : ch + 1;
+
+  const recCanvas = document.createElement('canvas');
+  recCanvas.width = cwEven; recCanvas.height = chEven;
+  const recCtx = recCanvas.getContext('2d');
+
+  // For WebM: use MediaRecorder; for MP4/GIF: collect frames then encode via FFmpeg
+  let recorder = null, stream = null, chunks = [];
+  const useMediaRecorder = format === 'webm';
+
+  if (useMediaRecorder) {
+    stream = recCanvas.captureStream(0);
+    const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    let mimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      renderedBlob = new Blob(chunks, { type: mimeType });
+      finishVideoRender(renderedBlob, 'webm');
+    };
+    recorder.start();
+  }
+
+  const t0 = performance.now();
+
+  for (let f = 0; f < totalFrames; f++) {
+    if (videoRenderCancel) break;
+
+    const t = startT + f / fps;
+
+    // Seek to frame
+    await new Promise(resolve => {
+      videoEl.currentTime = t;
+      videoEl.onseeked = resolve;
+    });
+
+    // Draw frame
+    frameCtx.drawImage(videoEl, 0, 0, vw, vh);
+    const frameSrc = frameCanvas.toDataURL('image/png');
+
+    // Load as image and process
+    const img = await new Promise(resolve => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.src = frameSrc;
+    });
+
+    srcImage = img; origW = img.width; origH = img.height;
+
+    // Draw source to output canvas with transforms
+    canvas.width = cw; canvas.height = ch;
+    ctx.save();
+    ctx.translate(cw / 2, ch / 2);
+    ctx.rotate(rotation * Math.PI / 180);
+    if (flipHorz) ctx.scale(-1, 1);
+    ctx.drawImage(img, -outW / 2, -outH / 2, outW, outH);
+    ctx.restore();
+
+    const imgd = ctx.getImageData(0, 0, cw, ch);
+    const imageData = new Uint8Array(imgd.data.buffer);
+    const pxCount = cw * ch;
+    const oR = new Uint8Array(pxCount), oG = new Uint8Array(pxCount), oB = new Uint8Array(pxCount);
+    for (let i = 0; i < pxCount; i++) { oR[i] = imageData[i * 4]; oG[i] = imageData[i * 4 + 1]; oB[i] = imageData[i * 4 + 2]; }
+
+    // Process via worker
+    const resultData = await processFrameViaWorker(imageData, oR, oG, oB, cw, ch);
+
+    // Put processed frame on recording canvas (pad to even size)
+    const resultImageData = new ImageData(new Uint8ClampedArray(resultData), cw, ch);
+    recCtx.fillStyle = '#000';
+    recCtx.fillRect(0, 0, cwEven, chEven);
+    recCtx.putImageData(resultImageData, 0, 0);
+
+    // Also show on main canvas
+    canvas.width = cw; canvas.height = ch;
+    ctx.putImageData(resultImageData, 0, 0);
+
+    if (useMediaRecorder) {
+      stream.getVideoTracks()[0].requestFrame();
+    } else {
+      // Collect frame as JPEG for FFmpeg
+      const blob = await new Promise(r => recCanvas.toBlob(r, 'image/jpeg', 0.95));
+      const buf = await blob.arrayBuffer();
+      renderedFrames.push(new Uint8Array(buf));
+    }
+
+    // Update progress
+    const pct = Math.round((f + 1) / totalFrames * 100);
+    document.getElementById('vrProgressBar').style.width = pct + '%';
+    document.getElementById('vrProgressText').textContent = pct + '%';
+    const elapsed = (performance.now() - t0) / 1000;
+    const eta = elapsed / (f + 1) * (totalFrames - f - 1);
+    document.getElementById('vrStatus').textContent =
+      'Frame ' + (f + 1) + '/' + totalFrames +
+      ' | ' + elapsed.toFixed(1) + 's elapsed' +
+      ' | ETA ' + eta.toFixed(1) + 's';
+    document.getElementById('vrPlayhead').style.left = ((t - startT) / (endT - startT) * 100) + '%';
+
+    // Yield to UI
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  if (videoRenderCancel) {
+    videoRendering = false;
+    document.getElementById('vrCancelBtn').style.display = 'none';
+    document.getElementById('vrRenderBtn').style.display = '';
+    document.getElementById('vrStatus').textContent = 'Cancelled';
+    document.getElementById('vrProgressWrap').style.display = 'none';
+    return;
+  }
+
+  if (useMediaRecorder) {
+    recorder.stop();
+  } else {
+    // Encode via FFmpeg
+    await encodeWithFFmpeg(renderedFrames, cwEven, chEven, fps, format);
+  }
+}
+
+async function encodeWithFFmpeg(frames, w, h, fps, format) {
+  const ffmpeg = ffmpegInstance;
+  document.getElementById('vrStatus').textContent = 'Encoding ' + format.toUpperCase() + ' with FFmpeg...';
+  document.getElementById('vrProgressText').textContent = 'Encoding...';
+
+  try {
+    // Write frames as numbered JPEGs
+    for (let i = 0; i < frames.length; i++) {
+      const name = 'frame' + String(i).padStart(6, '0') + '.jpg';
+      await ffmpeg.writeFile(name, frames[i]);
+    }
+
+    let outputName, outputMime;
+    if (format === 'mp4') {
+      outputName = 'output.mp4';
+      outputMime = 'video/mp4';
+      await ffmpeg.exec([
+        '-framerate', String(fps),
+        '-i', 'frame%06d.jpg',
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-crf', '18',
+        '-preset', 'fast',
+        '-movflags', '+faststart',
+        outputName
+      ]);
+    } else if (format === 'gif') {
+      outputName = 'output.gif';
+      outputMime = 'image/gif';
+      // Two-pass for high quality GIF: generate palette then use it
+      await ffmpeg.exec([
+        '-framerate', String(fps),
+        '-i', 'frame%06d.jpg',
+        '-vf', 'fps=' + fps + ',scale=' + w + ':' + h + ':flags=lanczos,palettegen=max_colors=256:stats_mode=diff',
+        '-y', 'palette.png'
+      ]);
+      await ffmpeg.exec([
+        '-framerate', String(fps),
+        '-i', 'frame%06d.jpg',
+        '-i', 'palette.png',
+        '-lavfi', 'fps=' + fps + ',scale=' + w + ':' + h + ':flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5',
+        '-y', outputName
+      ]);
+    }
+
+    const data = await ffmpeg.readFile(outputName);
+    renderedBlob = new Blob([data.buffer], { type: outputMime });
+
+    // Cleanup FFmpeg FS
+    for (let i = 0; i < frames.length; i++) {
+      try { await ffmpeg.deleteFile('frame' + String(i).padStart(6, '0') + '.jpg'); } catch(e) {}
+    }
+    try { await ffmpeg.deleteFile(outputName); } catch(e) {}
+    try { await ffmpeg.deleteFile('palette.png'); } catch(e) {}
+
+    finishVideoRender(renderedBlob, format);
+  } catch (e) {
+    console.error('FFmpeg encode error:', e);
+    videoRendering = false;
+    document.getElementById('vrCancelBtn').style.display = 'none';
+    document.getElementById('vrRenderBtn').style.display = '';
+    document.getElementById('vrStatus').textContent = 'Encoding failed: ' + e.message;
+  }
+}
+
+function processFrameViaWorker(imageData, oR, oG, oB, cw, ch) {
+  return new Promise((resolve, reject) => {
+    const frameId = ++processId;
+
+    // Collect params (same as processImage)
+    const shapeMap = { circle: 0, euclidian: 1, square: 2, line: 3 };
+    const params = {
+      activeMode, halftoneType, stochType, ptShape,
+      grayMethod: document.getElementById('grayMethod').value,
+      brightness: parseInt(document.getElementById('brightness').value),
+      contrast: parseInt(document.getElementById('contrast').value),
+      gamma: parseInt(document.getElementById('gamma').value) / 100,
+      sharpenAmount: parseInt(document.getElementById('sharpen').value) * parseInt(document.getElementById('sharpInt').value) / 100 / 5,
+      invert: document.getElementById('invertCheck').checked,
+      dgShadow: parseInt(document.getElementById('dgShadow').value) / 100,
+      dgHighlight: parseInt(document.getElementById('dgHighlight').value) / 100,
+      dotColor: hex2rgb(document.getElementById('dotColor').value),
+      bgColor: hex2rgb(document.getElementById('bgColor').value),
+      transparentBg: document.getElementById('transparentBg').checked,
+      amLPI: parseInt(document.getElementById('amLPI').value),
+      amAngle: parseInt(document.getElementById('amAngle').value),
+      amShape: shapeMap[document.getElementById('amShape').value] || 0,
+      amLayout: document.getElementById('amLayout').value === 'benday' ? 1 : 0,
+      amShiftX: parseInt(document.getElementById('amShiftX').value),
+      amShiftY: parseInt(document.getElementById('amShiftY').value),
+      patternIdx: selectedPattern,
+      patOffX: parseInt(document.getElementById('patOffX').value),
+      patOffY: parseInt(document.getElementById('patOffY').value),
+      patAngle: patternRotation,
+      customMatrix: customMatrix ? new Float32Array(customMatrix) : null,
+      customMatrixSize: customMatrix ? Math.round(Math.sqrt(customMatrix.length)) : 0,
+      errorAlgo: document.getElementById('errorAlgo').value,
+      errorStrength: parseInt(document.getElementById('errorStrength').value) / 100,
+      orderedSize: parseInt(document.getElementById('orderedSize').value),
+      orderedLevels: parseInt(document.getElementById('orderedLevels').value),
+      noiseType: document.getElementById('noiseType').value,
+      noiseStdDev: parseInt(document.getElementById('noiseStdDev').value) / 100,
+      noiseSize: parseInt(document.getElementById('noiseSize').value),
+      noiseDots: document.getElementById('noiseDots').value,
+      thresholdVal: parseInt(document.getElementById('thresholdVal').value) / 255,
+      stochLPI: parseInt(document.getElementById('stochLPI').value),
+      stochAngle: parseInt(document.getElementById('stochAngle').value),
+      stochDotArea: parseInt(document.getElementById('stochDotArea').value),
+      stochTint: { black: 0, white: 1, blend: 2 }[document.getElementById('stochTint').value] || 0,
+      stochInvert: document.getElementById('stochInvert').checked,
+      layers: activeLayers.map(l => l ? 1 : 0),
+      rdU: parseInt(document.getElementById('rdU').value) / 1000,
+      rdV: parseInt(document.getElementById('rdV').value) / 1000,
+      rdF: parseInt(document.getElementById('rdF').value) / 1000,
+      rdK: parseInt(document.getElementById('rdK').value) / 1000,
+      rdGrow: parseInt(document.getElementById('rdGrow').value),
+      spiralArms: parseInt(document.getElementById('spiralArms').value),
+      spiralWrap: parseInt(document.getElementById('spiralWrap').value),
+      spiralSpacing: parseInt(document.getElementById('spiralSpacing').value),
+      spiralRadius: parseInt(document.getElementById('spiralRadius').value),
+      spiralDir: document.getElementById('spiralDir').value,
+      spiralContour: document.getElementById('spiralContour').value,
+      ptDotColor: hex2rgb(document.getElementById('ptDotColor').value),
+      ptBGColor: hex2rgb(document.getElementById('ptBGColor').value),
+      ptAlpha: parseInt(document.getElementById('ptAlpha').value),
+      ptColorMode: document.getElementById('ptColorMode').value,
+      ptSize: parseInt(document.getElementById('ptSize').value),
+      ptSizeRange: document.getElementById('ptSizeRange').checked,
+      ptSizeMin: parseInt(document.getElementById('ptSizeMin').value),
+      ptSpaceMin: parseInt(document.getElementById('ptSpaceMin').value),
+      ptSpaceMax: parseInt(document.getElementById('ptSpaceMax').value),
+      ptPhases: parseInt(document.getElementById('ptPhases').value),
+      ptOverpaint: document.getElementById('ptOverpaint').checked,
+      ptHideZone: document.getElementById('ptHideZone').checked,
+      ptHideMin: parseInt(document.getElementById('ptHideMin').value) / 255,
+      ptAA: document.getElementById('ptAA').checked,
+      ptAngle: parseInt(document.getElementById('ptAngle').value) * Math.PI / 180,
+      ptAngleRange: document.getElementById('ptAngleRange').checked,
+      ptAngleRandom: document.getElementById('ptAngleRandom').checked,
+      ptVertices: parseInt(document.getElementById('ptVertices').value),
+      ptWarp: parseInt(document.getElementById('ptWarp').value) / 100,
+      ptLineStyle: document.getElementById('ptLineStyle').value,
+      ptLength: parseInt(document.getElementById('ptLength').value),
+      ptSegments: parseInt(document.getElementById('ptSegments').value),
+      ptLineWarp: parseInt(document.getElementById('ptLineWarp').value) / 100,
+      ptLenRandom: document.getElementById('ptLenRandom').checked,
+      clrMode: document.getElementById('clrMode').value,
+      clrC1: hex2rgb(document.getElementById('duoShadow').value),
+      clrC2: hex2rgb(document.getElementById('duoHighlight').value),
+      clrC3: hex2rgb(document.getElementById('triHighlight').value),
+      clrParam1: parseInt(document.getElementById('posterizeLevels').value),
+      clrParam2: parseInt(document.getElementById('satShift').value) / 100,
+      clrParam3: parseInt(document.getElementById('colorizeStr').value) / 100,
+    };
+    if (params.clrMode === 'tritone') { params.clrC1 = hex2rgb(document.getElementById('triShadow').value); params.clrC2 = hex2rgb(document.getElementById('triMid').value); params.clrC3 = hex2rgb(document.getElementById('triHighlight').value); }
+    if (params.clrMode === 'hue-shift') { params.clrParam1 = parseInt(document.getElementById('hueShift').value); params.clrParam2 = parseInt(document.getElementById('satShift').value) / 100; }
+    if (params.clrMode === 'colorize') { params.clrC1 = hex2rgb(document.getElementById('colorizeHue').value); }
+    if (params.clrMode === 'rgb-split') { params.clrParam1 = parseInt(document.getElementById('rgbOffX').value); params.clrParam2 = parseInt(document.getElementById('rgbOffY').value); }
+
+    // Temporary listener for this specific frame
+    const handler = function(ev) {
+      if (ev.data.type === 'result' && ev.data.id === frameId) {
+        worker.removeEventListener('message', handler);
+        resolve(new Uint8Array(ev.data.data));
+      }
+      if (ev.data.type === 'error' && ev.data.id === frameId) {
+        worker.removeEventListener('message', handler);
+        reject(new Error(ev.data.msg));
+      }
+    };
+    worker.addEventListener('message', handler);
+
+    const dataCopy = new Uint8Array(imageData);
+    const oRCopy = new Uint8Array(oR);
+    const oGCopy = new Uint8Array(oG);
+    const oBCopy = new Uint8Array(oB);
+    worker.postMessage(
+      { type: 'process', id: frameId, imageData: dataCopy, oR: oRCopy, oG: oGCopy, oB: oBCopy, cw, ch, params },
+      [dataCopy.buffer, oRCopy.buffer, oGCopy.buffer, oBCopy.buffer]
+    );
+  });
+}
+
+let lastRenderFormat = 'mp4';
+
+function finishVideoRender(blob, format) {
+  videoRendering = false;
+  lastRenderFormat = format || 'mp4';
+  document.getElementById('vrCancelBtn').style.display = 'none';
+  document.getElementById('vrRenderBtn').style.display = '';
+
+  const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+  document.getElementById('vrStatus').textContent = 'Done! ' + format.toUpperCase() + ' — ' + sizeMB + ' MB';
+  document.getElementById('vrProgressText').textContent = 'Complete!';
+  document.getElementById('vrProgressBar').style.width = '100%';
+
+  // Auto-download
+  downloadBlob(blob, format);
+}
+
+function downloadBlob(blob, format) {
+  const ext = format === 'gif' ? 'gif' : format === 'mp4' ? 'mp4' : 'webm';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'raster-studio-video.' + ext;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function cancelVideoRender() {
+  videoRenderCancel = true;
+}
+
+function exportVideo() {
+  if (renderedBlob) {
+    downloadBlob(renderedBlob, lastRenderFormat);
+  } else if (videoLoaded) {
+    startVideoRender();
+  }
+}
+
+// ========== INIT ==========
+initPatternLibrary();
+initMatrix();
+generateLayerThumbnails();
+applyRDPreset();
+updateVals();
+</script>
+</body>
+</html>
