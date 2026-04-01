@@ -1,9 +1,9 @@
 // Web Worker: uses wasm-bindgen generated module for WASM image processing
-import init, * as wasm from '/raster_core.js';
+import init, * as wasm from './raster_core.js';
 
 let ready = false;
 
-init('/raster_core_bg.wasm').then(() => {
+init(new URL('./raster_core_bg.wasm', self.location.href)).then(() => {
   ready = true;
   postMessage({ type: 'ready' });
 }).catch(err => {

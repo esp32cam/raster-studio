@@ -135,6 +135,40 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
 </head>
 <body>
 
+<!-- PASSWORD GATE -->
+<div id="pwGate" style="display:none;position:fixed;inset:0;z-index:99999;background:#008080;display:flex;align-items:center;justify-content:center">
+  <div style="background:#c0c0c0;border:2px solid;border-color:#fff #808080 #808080 #fff;box-shadow:2px 2px 0 #000;width:320px">
+    <div style="background:#000080;color:#fff;font-weight:bold;padding:3px 6px;display:flex;justify-content:space-between;align-items:center;font-family:'MS Sans Serif',Arial,sans-serif;font-size:13px">
+      <span>&#128274; Raster Studio</span>
+    </div>
+    <div style="padding:16px;font-family:'MS Sans Serif',Arial,sans-serif;font-size:12px">
+      <div style="margin-bottom:10px;color:#000">Enter password to continue:</div>
+      <input type="password" id="pwInput" placeholder="Password" autocomplete="current-password"
+        style="width:100%;box-sizing:border-box;padding:3px 4px;border:2px solid;border-color:#808080 #fff #fff #808080;font-size:12px;margin-bottom:10px;background:#fff;font-family:'MS Sans Serif',Arial,sans-serif"
+        onkeydown="if(event.key==='Enter')checkPW()">
+      <div id="pwError" style="color:#c00;font-size:11px;min-height:14px;margin-bottom:8px"></div>
+      <div style="text-align:right">
+        <button onclick="checkPW()" style="font-family:'MS Sans Serif',Arial,sans-serif;font-size:12px;background:#c0c0c0;border:2px solid;border-color:#fff #808080 #808080 #fff;padding:3px 18px;cursor:pointer;min-width:75px">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const PASS = 'raster-studio';
+  const KEY = 'rs_auth';
+  const gate = document.getElementById('pwGate');
+  if(sessionStorage.getItem(KEY) === '1'){ gate.style.display='none'; return; }
+  gate.style.display='flex';
+  window.checkPW = function(){
+    const v = document.getElementById('pwInput').value;
+    if(v === PASS){ sessionStorage.setItem(KEY,'1'); gate.style.display='none'; }
+    else{ document.getElementById('pwError').textContent='Incorrect password.'; document.getElementById('pwInput').value=''; document.getElementById('pwInput').focus(); }
+  };
+  setTimeout(()=>document.getElementById('pwInput').focus(), 100);
+})();
+</script>
+
 <div class="wf raised">
   <div class="tb">
     <span class="tt">Raster Studio</span>
@@ -759,7 +793,7 @@ function updateVals(){
 }
 
 // ========== WEB WORKER + WASM ==========
-const worker = new Worker('/worker.js', { type: 'module' });
+const worker = new Worker(new URL('./worker.js', document.baseURI), { type: 'module' });
 let workerReady = false;
 let pendingProcess = false;
 let processId = 0;
@@ -1146,7 +1180,7 @@ async function loadFFmpeg() {
     if (!window.FFmpegWASM) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = '/ffmpeg/ffmpeg.js';
+        s.src = new URL('./ffmpeg/ffmpeg.js', document.baseURI).href;
         s.onload = resolve;
         s.onerror = () => reject(new Error('Failed to load ffmpeg.js'));
         document.head.appendChild(s);
@@ -1158,11 +1192,12 @@ async function loadFFmpeg() {
       if (progress >= 0) document.getElementById('vrStatus').textContent = 'FFmpeg encoding... ' + Math.round(progress * 100) + '%';
     });
 
-    // Load core from local /ffmpeg/ directory
-    // The 814.ffmpeg.js worker will be auto-resolved relative to /ffmpeg/ffmpeg.js
+    // Load core from local ffmpeg/ directory (relative path for GitHub Pages subdir support)
+    // The 814.ffmpeg.js worker will be auto-resolved relative to ffmpeg/ffmpeg.js
+    const ffmpegBase = new URL('./ffmpeg/', document.baseURI).href;
     await ffmpeg.load({
-      coreURL: '/ffmpeg/ffmpeg-core.js',
-      wasmURL: '/ffmpeg/ffmpeg-core.wasm',
+      coreURL: ffmpegBase + 'ffmpeg-core.js',
+      wasmURL: ffmpegBase + 'ffmpeg-core.wasm',
     });
     ffmpegInstance = ffmpeg;
     ffmpegLoaded = true;
