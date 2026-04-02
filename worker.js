@@ -57,6 +57,16 @@ function processImage(msg) {
   const gray = new Float32Array(pixelCount);
   wasm.extract_gray(data, gray);
 
+  // ===== LIGHT DIRECTION =====
+  if (params.lightEnabled) {
+    wasm.light_direction(
+      gray, cw, ch,
+      params.lightAzimuth, params.lightElevation,
+      params.lightIntensity, params.lightAmbient,
+      params.lightBump, params.lightSpecular, params.lightShininess
+    );
+  }
+
   // ===== OUTPUT =====
   const out = new Uint8Array(pixelCount * 4);
   const dc = params.dotColor;

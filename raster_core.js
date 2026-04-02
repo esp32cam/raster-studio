@@ -177,6 +177,24 @@ export function invert(data) {
 
 /**
  * @param {Float32Array} gray
+ * @param {number} w
+ * @param {number} h
+ * @param {number} azimuth_deg
+ * @param {number} elevation_deg
+ * @param {number} intensity
+ * @param {number} ambient
+ * @param {number} bump_strength
+ * @param {number} specular_on
+ * @param {number} shininess
+ */
+export function light_direction(gray, w, h, azimuth_deg, elevation_deg, intensity, ambient, bump_strength, specular_on, shininess) {
+    var ptr0 = passArrayF32ToWasm0(gray, wasm.__wbindgen_malloc);
+    var len0 = WASM_VECTOR_LEN;
+    wasm.light_direction(ptr0, len0, gray, w, h, azimuth_deg, elevation_deg, intensity, ambient, bump_strength, specular_on, shininess);
+}
+
+/**
+ * @param {Float32Array} gray
  * @param {Uint8Array} out
  * @param {number} w
  * @param {number} h
