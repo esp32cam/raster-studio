@@ -467,24 +467,36 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
 
         <!-- ===== LIGHT DIRECTION ===== -->
         <fieldset class="gb" id="lightDirBox"><span class="gl">Light Direction</span>
-          <div class="cr"><input type="checkbox" class="wc" id="lightEnabled"><label for="lightEnabled">Enable</label></div>
-          <div class="cr"><label>Azimuth</label><input type="range" id="lightAzimuth" min="0" max="360" value="315"><span class="vl" id="lightAzimuthVal">315°</span></div>
-          <div class="br">
-            <button class="wb" onclick="setLightAz(0)">N</button>
-            <button class="wb" onclick="setLightAz(45)">NE</button>
-            <button class="wb" onclick="setLightAz(90)">E</button>
-            <button class="wb" onclick="setLightAz(135)">SE</button>
-            <button class="wb" onclick="setLightAz(180)">S</button>
-            <button class="wb" onclick="setLightAz(225)">SW</button>
-            <button class="wb" onclick="setLightAz(270)">W</button>
-            <button class="wb" onclick="setLightAz(315)">NW</button>
+          <div class="cr"><input type="checkbox" class="wc" id="lightEnabled"><label for="lightEnabled">Enable</label>
+            <button class="wb" onclick="estimateOriginalLight()" title="Detect original light source from image gradients" style="margin-left:auto;font-size:9px">Detect Light</button>
           </div>
-          <div class="cr"><label>Elevation</label><input type="range" id="lightElevation" min="0" max="90" value="45"><span class="vl" id="lightElevationVal">45°</span></div>
-          <div class="cr"><label>Intensity</label><input type="range" id="lightIntensity" min="0" max="100" value="50"><span class="vl" id="lightIntensityVal">50%</span></div>
-          <div class="cr"><label>Ambient</label><input type="range" id="lightAmbient" min="0" max="100" value="30"><span class="vl" id="lightAmbientVal">30%</span></div>
+          <div style="display:flex;gap:6px;align-items:flex-start;margin:4px 0">
+            <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+              <canvas id="lightGizmo" width="130" height="130" style="border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);cursor:crosshair;background:#1a1a2e"></canvas>
+              <div style="display:flex;gap:1px;flex-wrap:wrap;justify-content:center;max-width:130px">
+                <button class="wb" onclick="setLightPreset('top')" style="font-size:8px;padding:1px 3px" title="Top">&#9650;</button>
+                <button class="wb" onclick="setLightPreset('front')" style="font-size:8px;padding:1px 3px" title="Front">F</button>
+                <button class="wb" onclick="setLightPreset('left')" style="font-size:8px;padding:1px 3px" title="Left">&#9664;</button>
+                <button class="wb" onclick="setLightPreset('right')" style="font-size:8px;padding:1px 3px" title="Right">&#9654;</button>
+                <button class="wb" onclick="setLightPreset('back')" style="font-size:8px;padding:1px 3px" title="Back">B</button>
+                <button class="wb" onclick="setLightPreset('rim')" style="font-size:8px;padding:1px 3px" title="Rim light">R</button>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+              <div class="cr"><label style="min-width:28px">Az</label><input type="range" id="lightAzimuth" min="0" max="360" value="315"><span class="vl" id="lightAzimuthVal">315°</span></div>
+              <div class="cr"><label style="min-width:28px">El</label><input type="range" id="lightElevation" min="0" max="90" value="45"><span class="vl" id="lightElevationVal">45°</span></div>
+              <div class="cr"><label style="min-width:28px">Int</label><input type="range" id="lightIntensity" min="0" max="100" value="50"><span class="vl" id="lightIntensityVal">50%</span></div>
+              <div class="cr"><label style="min-width:28px">Amb</label><input type="range" id="lightAmbient" min="0" max="100" value="30"><span class="vl" id="lightAmbientVal">30%</span></div>
+              <div class="sub-title" style="margin-top:4px">Depth Map</div>
+              <canvas id="depthMapPreview" width="80" height="60" style="border:1px solid var(--darker);background:#000;image-rendering:pixelated;width:100%;cursor:pointer" title="Click to toggle depth view" onclick="toggleDepthPreview()"></canvas>
+            </div>
+          </div>
+          <div class="sub-title">Surface</div>
           <div class="cr"><label>Bump</label><input type="range" id="lightBump" min="0" max="500" value="100"><span class="vl" id="lightBumpVal">1.0</span></div>
-          <div class="cr"><input type="checkbox" class="wc" id="lightSpecular"><label for="lightSpecular">Specular</label></div>
-          <div class="cr"><label>Shininess</label><input type="range" id="lightShininess" min="1" max="128" value="32"><span class="vl" id="lightShininessVal">32</span></div>
+          <div class="cr"><input type="checkbox" class="wc" id="lightSpecular"><label for="lightSpecular">Specular</label>
+            <label style="min-width:auto;margin-left:8px">Shine</label><input type="range" id="lightShininess" min="1" max="128" value="32" style="width:60px"><span class="vl" id="lightShininessVal">32</span></div>
+          <div class="sub-title">Detected Source</div>
+          <div class="cr" id="detectedLightInfo" style="font-size:10px;color:var(--darker)">Not analyzed</div>
         </fieldset>
 
         <!-- ===== OUTPUT COLORS ===== -->
@@ -550,6 +562,8 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
     <div class="ss" id="statusInfo">Ready</div>
     <div class="ss sm" id="statusSize">--</div>
     <div class="ss sm"><div class="zb">
+      <button class="wb" id="showOrigBtn" onmousedown="showOriginal(true)" onmouseup="showOriginal(false)" onmouseleave="showOriginal(false)" title="Hold to see original">Orig</button>
+      <input type="checkbox" id="lockPreview" class="wc" title="Lock: never show original during processing"><label for="lockPreview" style="font-size:9px;cursor:pointer" title="Lock preview (no original flash)">Lock</label>
       <button class="wb" onclick="zoomOut()">-</button><span id="zoomLevel">100%</span>
       <button class="wb" onclick="zoomIn()">+</button><button class="wb" onclick="zoomFit()">Fit</button>
     </div></div>
@@ -586,6 +600,8 @@ function loadFile(file){
     aspectRatio=img.width/img.height;rotation=0;flipHorz=false;
     document.getElementById('dropHint').style.display='none';
     canvas.style.display='block';processImage();
+    // Update depth map preview
+    setTimeout(()=>{ if(typeof updateDepthPreview==='function') updateDepthPreview(); }, 100);
   };img.src=e.target.result};reader.readAsDataURL(file);
 }
 
@@ -785,6 +801,33 @@ function zoomOut(){zoomScale=Math.max(zoomScale/1.25,0.1);applyZoom()}
 function zoomFit(){zoomScale=1;canvas.style.maxWidth='98%';canvas.style.maxHeight='98%';canvas.style.width='';applyZoom()}
 function applyZoom(){document.getElementById('zoomLevel').textContent=Math.round(zoomScale*100)+'%';if(zoomScale===1){canvas.style.maxWidth='98%';canvas.style.maxHeight='98%';canvas.style.width=''}else{canvas.style.maxWidth='none';canvas.style.maxHeight='none';canvas.style.width=(canvas.width*zoomScale)+'px'}}
 
+// ========== SHOW ORIGINAL ==========
+let _lastProcessed=null;
+function showOriginal(show){
+  if(!srcImage)return;
+  // If lock preview is on, never show original
+  if(document.getElementById('lockPreview').checked && show) return;
+  if(show){
+    // Save current processed image and show original
+    _lastProcessed=ctx.getImageData(0,0,canvas.width,canvas.height);
+    const outW=parseInt(document.getElementById('outWidth').value)||origW;
+    const outH=parseInt(document.getElementById('outHeight').value)||origH;
+    const sw=rotation===90||rotation===270, cw=sw?outH:outW, ch=sw?outW:outH;
+    if(canvas.width!==cw||canvas.height!==ch){canvas.width=cw;canvas.height=ch}
+    ctx.save();ctx.translate(cw/2,ch/2);ctx.rotate(rotation*Math.PI/180);if(flipHorz)ctx.scale(-1,1);
+    ctx.drawImage(srcImage,-outW/2,-outH/2,outW,outH);ctx.restore();
+    document.getElementById('showOrigBtn').style.background='#000080';
+    document.getElementById('showOrigBtn').style.color='#fff';
+  }else if(_lastProcessed){
+    // Restore processed image
+    if(canvas.width!==_lastProcessed.width||canvas.height!==_lastProcessed.height){canvas.width=_lastProcessed.width;canvas.height=_lastProcessed.height}
+    ctx.putImageData(_lastProcessed,0,0);
+    _lastProcessed=null;
+    document.getElementById('showOrigBtn').style.background='';
+    document.getElementById('showOrigBtn').style.color='';
+  }
+}
+
 // ========== BIND INPUTS ==========
 document.querySelectorAll('input[type="range"],select,input[type="checkbox"],input[type="color"]').forEach(i=>{
   i.addEventListener('input',()=>{updateVals();scheduleProcess()});
@@ -815,6 +858,7 @@ function updateVals(){
   document.getElementById('ptDotHex').textContent=document.getElementById('ptDotColor').value.toUpperCase();
   document.getElementById('ptBGHex').textContent=document.getElementById('ptBGColor').value.toUpperCase();
   document.getElementById('lightBumpVal').textContent=(parseInt(document.getElementById('lightBump').value)/100).toFixed(1);
+  if(typeof drawLightGizmo==='function')drawLightGizmo();
 }
 
 // ========== WEB WORKER + WASM ==========
@@ -837,7 +881,8 @@ worker.onmessage = function(e) {
     const sw = rotation === 90 || rotation === 270;
     const cw = sw ? outH : outW, ch = sw ? outW : outH;
     const imgData = new ImageData(new Uint8ClampedArray(e.data.data), cw, ch);
-    canvas.width = cw; canvas.height = ch;
+    // Only resize canvas if dimensions changed (avoids white flash from clearing)
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
     ctx.putImageData(imgData, 0, 0);
     applyZoom();
     const t1 = performance.now();
@@ -875,11 +920,13 @@ function processImage(){
   const outH=parseInt(document.getElementById('outHeight').value)||origH;
   const sw=rotation===90||rotation===270, cw=sw?outH:outW, ch=sw?outW:outH;
 
-  // Draw source to temp canvas on main thread (need DOM access)
-  canvas.width=cw;canvas.height=ch;
-  ctx.save();ctx.translate(cw/2,ch/2);ctx.rotate(rotation*Math.PI/180);if(flipHorz)ctx.scale(-1,1);
-  ctx.drawImage(srcImage,-outW/2,-outH/2,outW,outH);ctx.restore();
-  const imgd=ctx.getImageData(0,0,cw,ch);
+  // Draw source to OFFSCREEN canvas (prevents flicker on visible canvas)
+  if(!window._offCanvas){window._offCanvas=document.createElement('canvas');window._offCtx=window._offCanvas.getContext('2d',{willReadFrequently:true})}
+  const oc=window._offCanvas, octx=window._offCtx;
+  oc.width=cw;oc.height=ch;
+  octx.save();octx.translate(cw/2,ch/2);octx.rotate(rotation*Math.PI/180);if(flipHorz)octx.scale(-1,1);
+  octx.drawImage(srcImage,-outW/2,-outH/2,outW,outH);octx.restore();
+  const imgd=octx.getImageData(0,0,cw,ch);
   const imageData=new Uint8Array(imgd.data.buffer);
 
   // Extract original RGB channels
@@ -1008,7 +1055,365 @@ function processImage(){
 // ========== HELPERS ==========
 function hex2rgb(h){return{r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)}}
 function fract(x){return x-Math.floor(x)}
-function setLightAz(deg){document.getElementById('lightAzimuth').value=deg;updateVals();scheduleProcess()}
+function setLightAz(deg){document.getElementById('lightAzimuth').value=deg;updateVals();drawLightGizmo();scheduleProcess()}
+
+// ========== 3D LIGHT GIZMO ==========
+function drawLightGizmo(){
+  const gc=document.getElementById('lightGizmo');
+  if(!gc)return;
+  const g=gc.getContext('2d');
+  const w=gc.width, h=gc.height, cx=w/2, cy=h/2, R=48;
+
+  const az=(parseInt(document.getElementById('lightAzimuth').value)||0)*Math.PI/180;
+  const el=(parseInt(document.getElementById('lightElevation').value)||45)*Math.PI/180;
+  const enabled=document.getElementById('lightEnabled').checked;
+
+  // Clear
+  g.clearRect(0,0,w,h);
+
+  // Background grid (subtle)
+  g.strokeStyle='#2a2a4a';g.lineWidth=0.5;
+  for(let i=-2;i<=2;i++){
+    g.beginPath();g.moveTo(cx+i*R/2,cy-R-10);g.lineTo(cx+i*R/2,cy+R+10);g.stroke();
+    g.beginPath();g.moveTo(cx-R-10,cy+i*R/2);g.lineTo(cx+R+10,cy+i*R/2);g.stroke();
+  }
+
+  // Draw 3D sphere wireframe
+  g.strokeStyle='#555';g.lineWidth=1;
+
+  // Equator ellipse (ground plane)
+  g.beginPath();g.ellipse(cx,cy,R,R*0.35,0,0,Math.PI*2);g.stroke();
+
+  // Vertical circle (front)
+  g.beginPath();g.ellipse(cx,cy,R*0.35,R,0,0,Math.PI*2);g.stroke();
+
+  // Sphere outline
+  g.strokeStyle='#777';g.lineWidth=1.5;
+  g.beginPath();g.arc(cx,cy,R,0,Math.PI*2);g.stroke();
+
+  // Shaded sphere with Phong lighting
+  const lx=Math.cos(az)*Math.cos(el), ly=Math.sin(az)*Math.cos(el), lz=Math.sin(el);
+  const imgData=g.createImageData(w,h);
+  const d=imgData.data;
+  for(let py=0;py<h;py++){
+    for(let px=0;px<w;px++){
+      const dx=(px-cx)/R, dy=(py-cy)/R;
+      const r2=dx*dx+dy*dy;
+      if(r2>1)continue;
+      const dz=Math.sqrt(1-r2);
+      // Normal = (dx, dy, dz)
+      const ndl=dx*lx+dy*(-ly)+dz*lz;  // -ly because screen Y is flipped
+      const diff=Math.max(0,ndl);
+      const ambient=0.08;
+      let v=ambient+diff*0.85;
+      // Specular
+      const hx2=lx, hy2=-ly, hz2=lz+1;
+      const hlen=Math.sqrt(hx2*hx2+hy2*hy2+hz2*hz2);
+      const ndh=(dx*hx2/hlen+dy*hy2/hlen+dz*hz2/hlen);
+      const spec=Math.pow(Math.max(0,ndh),32)*0.4;
+      v+=spec;
+      v=Math.min(1,v);
+      const idx=(py*w+px)*4;
+      // Blue-ish sphere tint
+      d[idx]=Math.round(v*80);d[idx+1]=Math.round(v*120);d[idx+2]=Math.round(v*200);d[idx+3]=220;
+    }
+  }
+  g.putImageData(imgData,0,0);
+
+  // Re-draw sphere outline on top
+  g.strokeStyle='#99a';g.lineWidth=1;
+  g.beginPath();g.arc(cx,cy,R,0,Math.PI*2);g.stroke();
+
+  // Light source position (projected onto 2D)
+  const lightDist=R*1.3;
+  const lsx=cx+Math.cos(az)*Math.cos(el)*lightDist;
+  const lsy=cy-Math.sin(az)*Math.cos(el)*lightDist*0.35 - Math.sin(el)*lightDist*0.7;
+
+  // Light ray line
+  g.strokeStyle=enabled?'rgba(255,220,50,0.6)':'rgba(150,150,150,0.4)';
+  g.lineWidth=1.5;g.setLineDash([3,3]);
+  g.beginPath();g.moveTo(lsx,lsy);g.lineTo(cx,cy);g.stroke();
+  g.setLineDash([]);
+
+  // Light source icon (sun/point light)
+  const lColor=enabled?'#ffdd33':'#888';
+  g.fillStyle=lColor;
+  g.beginPath();g.arc(lsx,lsy,6,0,Math.PI*2);g.fill();
+  g.strokeStyle=enabled?'#fff':'#aaa';g.lineWidth=1;
+  g.beginPath();g.arc(lsx,lsy,6,0,Math.PI*2);g.stroke();
+
+  // Rays from light
+  if(enabled){
+    g.strokeStyle='rgba(255,220,50,0.35)';g.lineWidth=1;
+    for(let i=0;i<8;i++){
+      const ra=i*Math.PI/4;
+      g.beginPath();
+      g.moveTo(lsx+Math.cos(ra)*8,lsy+Math.sin(ra)*8);
+      g.lineTo(lsx+Math.cos(ra)*13,lsy+Math.sin(ra)*13);
+      g.stroke();
+    }
+  }
+
+  // Hit point on sphere surface
+  const hitX=cx+lx*R*0.85;
+  const hitY=cy-(-ly)*R*0.35*0.85 - lz*R*0.85;
+  if(enabled){
+    g.fillStyle='rgba(255,255,200,0.5)';
+    g.beginPath();g.arc(hitX,hitY,4,0,Math.PI*2);g.fill();
+  }
+
+  // Labels
+  g.font='9px "MS Sans Serif",Arial,sans-serif';
+  g.fillStyle='#888';g.textAlign='center';
+  g.fillText('N',cx,cy-R-4);g.fillText('S',cx,cy+R+10);
+  g.fillText('E',cx+R+8,cy+3);g.fillText('W',cx-R-8,cy+3);
+
+  // Azimuth/Elevation text
+  g.fillStyle=enabled?'#ddd':'#777';g.textAlign='left';
+  g.fillText(Math.round(az*180/Math.PI)+'° / '+Math.round(el*180/Math.PI)+'°',3,h-3);
+}
+
+// Gizmo mouse interaction — drag to set azimuth+elevation
+(function(){
+  const gc=document.getElementById('lightGizmo');
+  if(!gc)return;
+  let dragging=false;
+  function updateFromMouse(e){
+    const rect=gc.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const cx=gc.width/2, cy=gc.height/2, R=48;
+    const dx=(mx-cx)/R, dy=-(my-cy)/R;  // flip Y
+    // Azimuth from dx/dy
+    let az=Math.atan2(dy,dx)*180/Math.PI;
+    // Clamp to projected sphere
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    // Elevation from distance (closer to center = higher)
+    let el=90*(1-Math.min(dist,1.3)/1.3);
+    if(az<0)az+=360;
+    document.getElementById('lightAzimuth').value=Math.round(az);
+    document.getElementById('lightElevation').value=Math.round(Math.max(0,Math.min(90,el)));
+    updateVals();drawLightGizmo();scheduleProcess();
+  }
+  gc.addEventListener('mousedown',e=>{dragging=true;updateFromMouse(e)});
+  window.addEventListener('mousemove',e=>{if(dragging)updateFromMouse(e)});
+  window.addEventListener('mouseup',()=>{dragging=false});
+  // Touch support
+  gc.addEventListener('touchstart',e=>{e.preventDefault();dragging=true;updateFromMouse(e.touches[0])},{passive:false});
+  gc.addEventListener('touchmove',e=>{e.preventDefault();if(dragging)updateFromMouse(e.touches[0])},{passive:false});
+  gc.addEventListener('touchend',()=>{dragging=false});
+})()
+
+// ========== LIGHT PRESETS ==========
+function setLightPreset(name) {
+  const presets = {
+    top:   [180, 85, 60, 25], // az, el, intensity, ambient
+    front: [180, 30, 55, 30],
+    left:  [270, 40, 50, 25],
+    right: [90,  40, 50, 25],
+    back:  [0,   30, 60, 20],
+    rim:   [0,   10, 80, 10],
+  };
+  const p = presets[name];
+  if (!p) return;
+  document.getElementById('lightAzimuth').value = p[0];
+  document.getElementById('lightElevation').value = p[1];
+  document.getElementById('lightIntensity').value = p[2];
+  document.getElementById('lightAmbient').value = p[3];
+  document.getElementById('lightEnabled').checked = true;
+  updateVals(); drawLightGizmo(); scheduleProcess();
+}
+
+// ========== ORIGINAL LIGHT ESTIMATION ==========
+// Analyzes image gradients to detect dominant light direction
+function estimateOriginalLight() {
+  if (!srcImage) { document.getElementById('detectedLightInfo').textContent = 'No image loaded'; return; }
+
+  // Draw source at reduced resolution for speed
+  const maxDim = 256;
+  const scale = Math.min(maxDim / origW, maxDim / origH, 1);
+  const sw = Math.round(origW * scale), sh = Math.round(origH * scale);
+  const tc = document.createElement('canvas'); tc.width = sw; tc.height = sh;
+  const tctx = tc.getContext('2d');
+  tctx.drawImage(srcImage, 0, 0, sw, sh);
+  const imgd = tctx.getImageData(0, 0, sw, sh);
+  const d = imgd.data;
+
+  // Convert to grayscale
+  const gray = new Float32Array(sw * sh);
+  for (let i = 0; i < sw * sh; i++) {
+    gray[i] = (d[i*4] * 0.299 + d[i*4+1] * 0.587 + d[i*4+2] * 0.114) / 255;
+  }
+
+  // Compute Sobel gradients (dx, dy) — these approximate surface normals
+  let sumGx = 0, sumGy = 0, sumBright = 0;
+  // Also track brightness-weighted centroid for light position estimation
+  let wCx = 0, wCy = 0, totalW = 0;
+
+  for (let y = 1; y < sh - 1; y++) {
+    for (let x = 1; x < sw - 1; x++) {
+      const idx = y * sw + x;
+      // Sobel X
+      const gx = -gray[(y-1)*sw+(x-1)] - 2*gray[y*sw+(x-1)] - gray[(y+1)*sw+(x-1)]
+                 +gray[(y-1)*sw+(x+1)] + 2*gray[y*sw+(x+1)] + gray[(y+1)*sw+(x+1)];
+      // Sobel Y
+      const gy = -gray[(y-1)*sw+(x-1)] - 2*gray[(y-1)*sw+x] - gray[(y-1)*sw+(x+1)]
+                 +gray[(y+1)*sw+(x-1)] + 2*gray[(y+1)*sw+x] + gray[(y+1)*sw+(x+1)];
+
+      // Gradient magnitude as weight
+      const mag = Math.sqrt(gx*gx + gy*gy);
+      const brightness = gray[idx];
+
+      // Bright areas with strong gradients indicate lit edges
+      const edgeWeight = mag * brightness;
+      sumGx += gx * brightness;
+      sumGy += gy * brightness;
+
+      // Brightness centroid — brightest region indicates light direction
+      const bw = brightness * brightness * brightness; // cube for emphasis on highlights
+      wCx += x * bw;
+      wCy += y * bw;
+      totalW += bw;
+    }
+  }
+
+  // Brightness centroid gives light azimuth
+  const centX = totalW > 0 ? wCx / totalW : sw / 2;
+  const centY = totalW > 0 ? wCy / totalW : sh / 2;
+
+  // Convert centroid offset from image center to azimuth
+  const offX = (centX - sw / 2) / (sw / 2); // -1 to 1
+  const offY = -(centY - sh / 2) / (sh / 2); // -1 to 1 (flip Y)
+
+  let azimuth = Math.atan2(offY, offX) * 180 / Math.PI;
+  if (azimuth < 0) azimuth += 360;
+
+  // Gradient direction gives additional azimuth info
+  let gradAz = Math.atan2(-sumGy, sumGx) * 180 / Math.PI;
+  if (gradAz < 0) gradAz += 360;
+
+  // Blend centroid and gradient estimates (centroid more reliable for broad light)
+  const blendedAz = ((azimuth * 0.6 + gradAz * 0.4) + 360) % 360;
+
+  // Estimate elevation from contrast distribution
+  // High elevation = more even lighting; Low elevation = strong shadows
+  const brightPixels = gray.filter(v => v > 0.7).length;
+  const darkPixels = gray.filter(v => v < 0.3).length;
+  const contrastRatio = darkPixels / Math.max(1, brightPixels);
+  // High contrast = low elevation (raking light), low contrast = high elevation
+  const elevation = Math.max(5, Math.min(80, 60 - contrastRatio * 15));
+
+  // Estimate intensity from brightness range
+  let minB = 1, maxB = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] < minB) minB = gray[i];
+    if (gray[i] > maxB) maxB = gray[i];
+  }
+  const dynamicRange = maxB - minB;
+  const estIntensity = Math.round(Math.max(20, Math.min(90, dynamicRange * 80)));
+  const estAmbient = Math.round(Math.max(5, Math.min(60, minB * 80)));
+
+  // Apply detected values
+  document.getElementById('lightAzimuth').value = Math.round(blendedAz);
+  document.getElementById('lightElevation').value = Math.round(elevation);
+  document.getElementById('lightIntensity').value = estIntensity;
+  document.getElementById('lightAmbient').value = estAmbient;
+  document.getElementById('lightEnabled').checked = true;
+
+  // Show info
+  document.getElementById('detectedLightInfo').textContent =
+    'Az: ' + Math.round(blendedAz) + '° El: ' + Math.round(elevation) +
+    '° | Range: ' + dynamicRange.toFixed(2) +
+    ' | From ' + describeDirection(blendedAz);
+
+  updateVals(); drawLightGizmo(); updateDepthPreview(); scheduleProcess();
+}
+
+function describeDirection(az) {
+  const dirs = ['E','NE','N','NW','W','SW','S','SE'];
+  return dirs[Math.round(((az % 360) + 360) % 360 / 45) % 8];
+}
+
+// ========== DEPTH MAP PREVIEW ==========
+let _showDepthOnCanvas = false;
+
+function updateDepthPreview() {
+  if (!srcImage) return;
+  const pc = document.getElementById('depthMapPreview');
+  const pctx = pc.getContext('2d');
+
+  // Draw source at preview size
+  const pw = pc.width, ph = pc.height;
+  pctx.drawImage(srcImage, 0, 0, pw, ph);
+  const imgd = pctx.getImageData(0, 0, pw, ph);
+  const d = imgd.data;
+
+  // Compute pseudo depth from luminance (brighter = closer assumption)
+  // Then apply Sobel to show normal map as RGB
+  const gray = new Float32Array(pw * ph);
+  for (let i = 0; i < pw * ph; i++) {
+    gray[i] = (d[i*4] * 0.299 + d[i*4+1] * 0.587 + d[i*4+2] * 0.114) / 255;
+  }
+
+  // Visualize as normal map (RGB = nx, ny, nz)
+  for (let y = 1; y < ph - 1; y++) {
+    for (let x = 1; x < pw - 1; x++) {
+      const idx = y * pw + x;
+      const gx = gray[idx + 1] - gray[idx - 1];
+      const gy = gray[idx + pw] - gray[idx - pw];
+      const bump = parseInt(document.getElementById('lightBump').value) / 100;
+      const nx = -gx * bump, ny = -gy * bump, nz = 1;
+      const len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+      const oi = idx * 4;
+      d[oi]   = Math.round(((nx/len) * 0.5 + 0.5) * 255); // R = nx
+      d[oi+1] = Math.round(((ny/len) * 0.5 + 0.5) * 255); // G = ny
+      d[oi+2] = Math.round(((nz/len) * 0.5 + 0.5) * 255); // B = nz
+      d[oi+3] = 255;
+    }
+  }
+  pctx.putImageData(imgd, 0, 0);
+}
+
+function toggleDepthPreview() {
+  _showDepthOnCanvas = !_showDepthOnCanvas;
+  if (_showDepthOnCanvas && srcImage) {
+    // Show full-size normal map on main canvas
+    const outW = parseInt(document.getElementById('outWidth').value) || origW;
+    const outH = parseInt(document.getElementById('outHeight').value) || origH;
+    const sw2 = rotation === 90 || rotation === 270;
+    const cw = sw2 ? outH : outW, ch = sw2 ? outW : outH;
+
+    if (!window._offCanvas) { window._offCanvas = document.createElement('canvas'); window._offCtx = window._offCanvas.getContext('2d', {willReadFrequently: true}); }
+    const oc = window._offCanvas, octx = window._offCtx;
+    oc.width = cw; oc.height = ch;
+    octx.save(); octx.translate(cw/2, ch/2); octx.rotate(rotation * Math.PI / 180);
+    if (flipHorz) octx.scale(-1, 1);
+    octx.drawImage(srcImage, -outW/2, -outH/2, outW, outH); octx.restore();
+    const imgd = octx.getImageData(0, 0, cw, ch);
+    const d = imgd.data;
+    const gray = new Float32Array(cw * ch);
+    for (let i = 0; i < cw * ch; i++) gray[i] = (d[i*4]*0.299 + d[i*4+1]*0.587 + d[i*4+2]*0.114) / 255;
+
+    const bump = parseInt(document.getElementById('lightBump').value) / 100;
+    for (let y = 1; y < ch - 1; y++) {
+      for (let x = 1; x < cw - 1; x++) {
+        const idx = y * cw + x;
+        const gx = gray[idx+1] - gray[idx-1], gy = gray[idx+cw] - gray[idx-cw];
+        const nx = -gx*bump, ny = -gy*bump, nz = 1;
+        const len = Math.sqrt(nx*nx+ny*ny+nz*nz);
+        const oi = idx*4;
+        d[oi] = ((nx/len)*0.5+0.5)*255|0; d[oi+1] = ((ny/len)*0.5+0.5)*255|0; d[oi+2] = ((nz/len)*0.5+0.5)*255|0;
+      }
+    }
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    ctx.putImageData(imgd, 0, 0);
+    document.getElementById('statusInfo').textContent = 'Normal Map Preview (click depth map to toggle)';
+  } else {
+    scheduleProcess(); // Re-render processed image
+  }
+}
+
+// Update depth preview when image loads or bump changes
+const _origLoadFile = loadFile;
 
 // ========== EXPORT / RESET ==========
 function exportPNG(){if(!srcImage)return;const l=document.createElement('a');l.download='raster-studio.png';l.href=canvas.toDataURL('image/png');l.click()}
@@ -1655,6 +2060,7 @@ initMatrix();
 generateLayerThumbnails();
 applyRDPreset();
 updateVals();
+drawLightGizmo();
 </script>
 </body>
 </html>
