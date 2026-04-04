@@ -523,13 +523,21 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
           <div class="cr"><label>Depth</label>
             <select class="ws" id="depthSource" onchange="onDepthSourceChange()">
               <option value="sobel">Sobel (fast)</option>
-              <option value="ml">ML Model (accurate)</option>
+              <option value="ml" selected>ML Model (accurate)</option>
+            </select>
+          </div>
+          <div class="cr"><label>Render</label>
+            <select class="ws" id="meshRenderMode" onchange="rebuild3DMesh()">
+              <option value="mesh">Displacement Mesh</option>
+              <option value="pointcloud">Point Cloud</option>
             </select>
           </div>
           <div class="cr"><label>Displace</label><input type="range" id="displaceHeight" min="0" max="300" value="80" oninput="updateVals();update3DMesh()"><span class="vl" id="displaceHeightVal">80</span></div>
+          <div class="cr"><label>Smooth</label><input type="range" id="depthSmooth" min="0" max="20" value="5" oninput="document.getElementById('depthSmoothVal').textContent=this.value;invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthSmoothVal">5</span></div>
           <div class="cr"><label>Mesh</label><select class="ws" id="meshResolution" onchange="rebuild3DMesh()">
             <option value="128">128 (fast)</option><option value="256" selected>256</option><option value="512">512 (detail)</option>
           </select></div>
+          <div class="cr"><label>Pts Size</label><input type="range" id="pointSize" min="1" max="8" value="2" oninput="document.getElementById('pointSizeVal').textContent=this.value;updatePointSize()"><span class="vl" id="pointSizeVal">2</span></div>
           <div class="cr"><label>Back</label><select class="ws" id="meshBackMode" onchange="rebuild3DMesh()">
             <option value="relief">Relief</option><option value="mirror">Mirror</option><option value="solid">Solid Box</option><option value="open">Open</option>
           </select></div>
@@ -1513,16 +1521,31 @@ async function estimateDepthML() {
     const sw = rotation === 90 || rotation === 270;
     const cw = sw ? outH : outW, ch = sw ? outW : outH;
 
-    // Resample depth map to output size
+    // Resample depth map to output size with bilinear interpolation
     mlDepthMap = new Float32Array(cw * ch);
     const rawDepth = depthData.data; // Uint8Array or Float32Array
+    // First normalize raw depth to Float32 0..1
+    const normDepth = new Float32Array(dw * dh);
+    let dMin = Infinity, dMax = -Infinity;
+    for (let i = 0; i < dw * dh; i++) {
+      const v = rawDepth[i] || 0;
+      if (v < dMin) dMin = v;
+      if (v > dMax) dMax = v;
+    }
+    const dRange = dMax - dMin || 1;
+    for (let i = 0; i < dw * dh; i++) normDepth[i] = (rawDepth[i] - dMin) / dRange;
+
+    // Bilinear resample
     for (let y = 0; y < ch; y++) {
       for (let x = 0; x < cw; x++) {
-        const sx = Math.floor(x * dw / cw);
-        const sy = Math.floor(y * dh / ch);
-        const val = rawDepth[sy * dw + sx];
-        // Normalize to 0..1
-        mlDepthMap[y * cw + x] = (typeof val === 'number' ? val : 0) / 255;
+        const fx = x * (dw - 1) / (cw - 1 || 1);
+        const fy = y * (dh - 1) / (ch - 1 || 1);
+        const x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const x1 = Math.min(x0 + 1, dw - 1), y1 = Math.min(y0 + 1, dh - 1);
+        const tx = fx - x0, ty = fy - y0;
+        mlDepthMap[y * cw + x] =
+          normDepth[y0*dw+x0]*(1-tx)*(1-ty) + normDepth[y0*dw+x1]*tx*(1-ty) +
+          normDepth[y1*dw+x0]*(1-tx)*ty + normDepth[y1*dw+x1]*tx*ty;
       }
     }
 
@@ -1556,7 +1579,7 @@ function onDepthSourceChange() {
   }
 }
 
-// Generate Sobel depth map from current image
+// Generate Sobel depth map from current image (improved with bilateral filter)
 function generateSobelDepth(cw, ch) {
   if (!srcImage) return null;
   const tc = document.createElement('canvas'); tc.width = cw; tc.height = ch;
@@ -1572,50 +1595,121 @@ function generateSobelDepth(cw, ch) {
   const gray = new Float32Array(cw * ch);
   for (let i = 0; i < cw * ch; i++) gray[i] = (d[i*4]*0.299 + d[i*4+1]*0.587 + d[i*4+2]*0.114) / 255;
 
-  // Sobel magnitude as depth proxy
+  // Use luminance as primary depth cue (bright = closer is a reasonable heuristic)
+  // Then integrate Sobel gradient for edge refinement
   const depth = new Float32Array(cw * ch);
-  for (let y = 1; y < ch - 1; y++) {
-    for (let x = 1; x < cw - 1; x++) {
-      const gx = -gray[(y-1)*cw+(x-1)] - 2*gray[y*cw+(x-1)] - gray[(y+1)*cw+(x-1)]
-                 +gray[(y-1)*cw+(x+1)] + 2*gray[y*cw+(x+1)] + gray[(y+1)*cw+(x+1)];
-      const gy = -gray[(y-1)*cw+(x-1)] - 2*gray[(y-1)*cw+x] - gray[(y-1)*cw+(x+1)]
-                 +gray[(y+1)*cw+(x-1)] + 2*gray[(y+1)*cw+x] + gray[(y+1)*cw+(x+1)];
-      depth[y * cw + x] = Math.sqrt(gx*gx + gy*gy);
-    }
-  }
-  // Normalize
-  let maxD = 0;
-  for (let i = 0; i < depth.length; i++) if (depth[i] > maxD) maxD = depth[i];
-  if (maxD > 0) for (let i = 0; i < depth.length; i++) depth[i] /= maxD;
+  for (let i = 0; i < cw * ch; i++) depth[i] = gray[i];
 
-  // Blur edges for smoother depth
-  const smoothed = new Float32Array(cw * ch);
-  const bk = 3;
-  for (let y = bk; y < ch - bk; y++) {
-    for (let x = bk; x < cw - bk; x++) {
-      let sum = 0, cnt = 0;
-      for (let dy = -bk; dy <= bk; dy++) for (let dx = -bk; dx <= bk; dx++) {
-        sum += depth[(y+dy)*cw+(x+dx)]; cnt++;
+  sobelDepthMap = depth;
+  return depth;
+}
+
+// Bilateral filter for edge-preserving depth smoothing
+let _smoothedDepthCache = null;
+let _smoothedDepthKey = '';
+function invalidateDepthSmooth() { _smoothedDepthCache = null; _smoothedDepthKey = ''; }
+
+function bilateralFilter(src, w, h, radius, sigmaS, sigmaR) {
+  const out = new Float32Array(w * h);
+  const s2 = 2 * sigmaS * sigmaS;
+  const r2 = 2 * sigmaR * sigmaR;
+  const step = Math.max(1, Math.floor(radius / 3)); // skip pixels for speed when radius is large
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ci = y * w + x;
+      const cv = src[ci];
+      let sumW = 0, sumV = 0;
+      for (let dy = -radius; dy <= radius; dy += step) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -radius; dx <= radius; dx += step) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+          const ni = ny * w + nx;
+          const nv = src[ni];
+          const spatialW = Math.exp(-(dx*dx + dy*dy) / s2);
+          const rangeW = Math.exp(-((cv - nv) * (cv - nv)) / r2);
+          const weight = spatialW * rangeW;
+          sumW += weight;
+          sumV += nv * weight;
+        }
       }
-      smoothed[y*cw+x] = sum / cnt;
+      out[ci] = sumW > 0 ? sumV / sumW : cv;
+    }
+  }
+  return out;
+}
+
+// Get smoothed depth map (with bilateral filter applied)
+function getSmoothedDepth(rawDepth, cw, ch) {
+  const smoothLevel = parseInt(document.getElementById('depthSmooth').value) || 0;
+  const key = smoothLevel + '_' + cw + '_' + ch + '_' + (rawDepth === mlDepthMap ? 'ml' : 'sobel');
+  if (_smoothedDepthCache && _smoothedDepthKey === key) return _smoothedDepthCache;
+
+  if (smoothLevel === 0) {
+    _smoothedDepthCache = rawDepth;
+    _smoothedDepthKey = key;
+    return rawDepth;
+  }
+
+  // Bilateral filter: preserves depth edges while smoothing noise
+  const radius = Math.max(2, smoothLevel * 2);
+  const sigmaS = radius * 0.6;
+  const sigmaR = 0.1 + smoothLevel * 0.02;
+
+  // Work at reduced resolution for speed
+  const maxDim = 512;
+  const scale = Math.min(maxDim / cw, maxDim / ch, 1);
+  const sw = Math.round(cw * scale), sh = Math.round(ch * scale);
+
+  // Downsample
+  const small = new Float32Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const sx = Math.floor(x / scale), sy = Math.floor(y / scale);
+      small[y * sw + x] = rawDepth[Math.min(sy, ch-1) * cw + Math.min(sx, cw-1)];
     }
   }
 
-  // Combine brightness (bright=near) with edges for depth
-  const combined = new Float32Array(cw * ch);
-  for (let i = 0; i < cw * ch; i++) {
-    combined[i] = gray[i] * 0.7 + (1 - smoothed[i]) * 0.3;
+  // Apply bilateral filter (multiple passes for stronger smoothing)
+  let filtered = small;
+  const passes = Math.min(3, Math.ceil(smoothLevel / 5));
+  for (let p = 0; p < passes; p++) {
+    filtered = bilateralFilter(filtered, sw, sh, radius, sigmaS, sigmaR);
   }
-  sobelDepthMap = combined;
-  return combined;
+
+  // Upsample with bilinear interpolation
+  const result = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const fx = x * scale, fy = y * scale;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1);
+      const tx = fx - x0, ty = fy - y0;
+      result[y * cw + x] =
+        filtered[y0 * sw + x0] * (1-tx) * (1-ty) +
+        filtered[y0 * sw + x1] * tx * (1-ty) +
+        filtered[y1 * sw + x0] * (1-tx) * ty +
+        filtered[y1 * sw + x1] * tx * ty;
+    }
+  }
+
+  _smoothedDepthCache = result;
+  _smoothedDepthKey = key;
+  return result;
 }
 
 // Get active depth map
 function getActiveDepthMap(cw, ch) {
   const src = document.getElementById('depthSource').value;
-  if (src === 'ml' && mlDepthMap && mlDepthMap.length === cw * ch) return mlDepthMap;
-  if (!sobelDepthMap || sobelDepthMap.length !== cw * ch) generateSobelDepth(cw, ch);
-  return sobelDepthMap;
+  let raw;
+  if (src === 'ml' && mlDepthMap && mlDepthMap.length === cw * ch) {
+    raw = mlDepthMap;
+  } else {
+    if (!sobelDepthMap || sobelDepthMap.length !== cw * ch) generateSobelDepth(cw, ch);
+    raw = sobelDepthMap;
+  }
+  return getSmoothedDepth(raw, cw, ch);
 }
 
 // Initialize Three.js scene
@@ -1680,12 +1774,36 @@ function render3D() {
   }
 }
 
-// Build/rebuild displacement mesh
+// Dispose old 3D objects cleanly
+function dispose3DMesh() {
+  if (!threeMesh) return;
+  threeScene.remove(threeMesh);
+  const disposeObj = (obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    }
+    if (obj.children) obj.children.forEach(disposeObj);
+  };
+  disposeObj(threeMesh);
+  threeMesh = null;
+}
+
+// Sample depth with bilinear interpolation
+function sampleDepthBilinear(depthMap, cw, ch, u, v) {
+  const fx = u * (cw - 1), fy = v * (ch - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const x1 = Math.min(x0 + 1, cw - 1), y1 = Math.min(y0 + 1, ch - 1);
+  const tx = fx - x0, ty = fy - y0;
+  return depthMap[y0*cw+x0]*(1-tx)*(1-ty) + depthMap[y0*cw+x1]*tx*(1-ty) +
+         depthMap[y1*cw+x0]*(1-tx)*ty + depthMap[y1*cw+x1]*tx*ty;
+}
+
+// Build/rebuild displacement mesh or point cloud
 function rebuild3DMesh() {
   if (!threeScene || !srcImage) return;
-
-  // Remove old mesh
-  if (threeMesh) { threeScene.remove(threeMesh); threeMesh.geometry.dispose(); if (threeMesh.material.map) threeMesh.material.map.dispose(); threeMesh.material.dispose(); }
+  dispose3DMesh();
 
   const outW = parseInt(document.getElementById('outWidth').value) || origW;
   const outH = parseInt(document.getElementById('outHeight').value) || origH;
@@ -1694,105 +1812,219 @@ function rebuild3DMesh() {
   const res = parseInt(document.getElementById('meshResolution').value) || 256;
   const displaceH = parseInt(document.getElementById('displaceHeight').value) || 80;
   const backMode = document.getElementById('meshBackMode').value;
+  const renderMode = document.getElementById('meshRenderMode').value;
 
   // Get depth map
   const depthMap = getActiveDepthMap(cw, ch);
   if (!depthMap) return;
 
-  // Create texture from output canvas
+  // Create texture from output canvas or source
   let texture;
   if (canvas.width > 0 && canvas.height > 0) {
     texture = new THREE.CanvasTexture(canvas);
   } else {
-    // Use source image
     texture = new THREE.Texture(srcImage);
   }
   texture.needsUpdate = true;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
 
-  // Create geometry
   const aspect = cw / ch;
   const planeW = 100 * aspect, planeH = 100;
-  const segX = Math.min(res, cw), segY = Math.min(res, ch);
-  const geo = new THREE.PlaneGeometry(planeW, planeH, segX, segY);
 
-  // Displace vertices
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const u = (pos.getX(i) / planeW + 0.5);  // 0..1
-    const v = (pos.getY(i) / planeH + 0.5);  // 0..1
-    const sx = Math.floor(u * (cw - 1));
-    const sy = Math.floor((1 - v) * (ch - 1)); // flip Y
-    const di = sy * cw + sx;
-    const d = depthMap[di] || 0;
-    pos.setZ(i, d * displaceH * 0.5);
-  }
-  geo.computeVertexNormals();
+  if (renderMode === 'pointcloud') {
+    // ===== POINT CLOUD MODE =====
+    const pcRes = Math.min(res * 2, 1024); // higher density for point cloud
+    const pcW = pcRes, pcH = Math.round(pcRes / aspect);
+    const numPoints = pcW * pcH;
 
-  // Material with texture - use Phong for proper lighting
-  const useRTLight = document.getElementById('realtime3DLight').checked;
-  threeMaterial = new THREE.MeshPhongMaterial({
-    map: texture,
-    side: THREE.DoubleSide,
-    wireframe: document.getElementById('showWireframe').checked,
-    shininess: parseInt(document.getElementById('lightShininess').value) || 32,
-    flatShading: false,
-  });
-
-  threeMesh = new THREE.Mesh(geo, threeMaterial);
-
-  // Handle back mode
-  if (backMode === 'solid') {
-    // Add box sides and bottom
-    const group = new THREE.Group();
-    group.add(threeMesh);
-    // Bottom plane
-    const bottomGeo = new THREE.PlaneGeometry(planeW, planeH);
-    const bottomMat = new THREE.MeshPhongMaterial({ color: 0x808080, side: THREE.DoubleSide });
-    const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
-    bottomMesh.position.z = -2;
-    group.add(bottomMesh);
-    threeScene.add(group);
-    threeMesh = group;
-  } else if (backMode === 'mirror') {
-    const group = new THREE.Group();
-    group.add(threeMesh);
-    // Mirrored back face
-    const backGeo = geo.clone();
-    const backPos = backGeo.attributes.position;
-    for (let i = 0; i < backPos.count; i++) {
-      backPos.setZ(i, -backPos.getZ(i)); // mirror depth
+    // Get source image colors for point cloud coloring
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = pcW; colorCanvas.height = pcH;
+    const cctx = colorCanvas.getContext('2d');
+    // Use halftone output if available
+    if (canvas.width > 0 && canvas.height > 0) {
+      cctx.drawImage(canvas, 0, 0, pcW, pcH);
+    } else {
+      cctx.drawImage(srcImage, 0, 0, pcW, pcH);
     }
-    backGeo.computeVertexNormals();
-    const backMat = threeMaterial.clone();
-    const backMesh = new THREE.Mesh(backGeo, backMat);
-    group.add(backMesh);
-    threeScene.add(group);
-    threeMesh = group;
-  } else {
+    const colorData = cctx.getImageData(0, 0, pcW, pcH).data;
+
+    const positions = new Float32Array(numPoints * 3);
+    const colors = new Float32Array(numPoints * 3);
+    let validCount = 0;
+
+    for (let py = 0; py < pcH; py++) {
+      for (let px = 0; px < pcW; px++) {
+        const u = px / (pcW - 1);
+        const v = py / (pcH - 1);
+        const d = sampleDepthBilinear(depthMap, cw, ch, u, v);
+
+        const x = (u - 0.5) * planeW;
+        const y = (0.5 - v) * planeH;
+        const z = d * displaceH * 0.5;
+
+        const idx = validCount * 3;
+        positions[idx] = x;
+        positions[idx + 1] = y;
+        positions[idx + 2] = z;
+
+        const ci = (py * pcW + px) * 4;
+        colors[idx] = colorData[ci] / 255;
+        colors[idx + 1] = colorData[ci + 1] / 255;
+        colors[idx + 2] = colorData[ci + 2] / 255;
+        validCount++;
+      }
+    }
+
+    const pcGeo = new THREE.BufferGeometry();
+    pcGeo.setAttribute('position', new THREE.BufferAttribute(positions.slice(0, validCount * 3), 3));
+    pcGeo.setAttribute('color', new THREE.BufferAttribute(colors.slice(0, validCount * 3), 3));
+
+    const ptSize = parseFloat(document.getElementById('pointSize').value) || 2;
+    const pcMat = new THREE.PointsMaterial({
+      size: ptSize,
+      vertexColors: true,
+      sizeAttenuation: true,
+    });
+
+    threeMesh = new THREE.Points(pcGeo, pcMat);
     threeScene.add(threeMesh);
+  } else {
+    // ===== DISPLACEMENT MESH MODE =====
+    const segX = Math.min(res, cw), segY = Math.min(res, ch);
+    const geo = new THREE.PlaneGeometry(planeW, planeH, segX, segY);
+
+    // Displace vertices with bilinear depth sampling
+    const pos = geo.attributes.position;
+    const depthThreshold = 0.15; // for edge detection in index removal
+    const vertexDepths = new Float32Array(pos.count);
+
+    for (let i = 0; i < pos.count; i++) {
+      const u = pos.getX(i) / planeW + 0.5;
+      const v = pos.getY(i) / planeH + 0.5;
+      const d = sampleDepthBilinear(depthMap, cw, ch, u, 1 - v);
+      vertexDepths[i] = d;
+      pos.setZ(i, d * displaceH * 0.5);
+    }
+
+    // Edge-aware: remove triangles that stretch across large depth discontinuities
+    const origIndex = geo.index;
+    if (origIndex) {
+      const indices = Array.from(origIndex.array);
+      const newIndices = [];
+      for (let i = 0; i < indices.length; i += 3) {
+        const a = indices[i], b = indices[i+1], c = indices[i+2];
+        const da = vertexDepths[a], db = vertexDepths[b], dc = vertexDepths[c];
+        const maxD = Math.max(da, db, dc), minD = Math.min(da, db, dc);
+        // Keep triangle only if depth range is within threshold
+        if (maxD - minD < depthThreshold) {
+          newIndices.push(a, b, c);
+        }
+      }
+      geo.setIndex(newIndices);
+    }
+
+    geo.computeVertexNormals();
+
+    threeMaterial = new THREE.MeshPhongMaterial({
+      map: texture,
+      side: THREE.DoubleSide,
+      wireframe: document.getElementById('showWireframe').checked,
+      shininess: parseInt(document.getElementById('lightShininess').value) || 32,
+      flatShading: false,
+    });
+
+    const mainMesh = new THREE.Mesh(geo, threeMaterial);
+
+    // Handle back mode
+    if (backMode === 'solid') {
+      const group = new THREE.Group();
+      group.add(mainMesh);
+      const bottomGeo = new THREE.PlaneGeometry(planeW, planeH);
+      const bottomMat = new THREE.MeshPhongMaterial({ color: 0x808080, side: THREE.DoubleSide });
+      const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
+      bottomMesh.position.z = -2;
+      group.add(bottomMesh);
+      // Side walls
+      const wallH = displaceH * 0.5 + 4;
+      const wallMat = new THREE.MeshPhongMaterial({ color: 0x606060, side: THREE.DoubleSide });
+      for (const [wx, wy, ww, wh, rz] of [
+        [0, -planeH/2, planeW, wallH, 0], [0, planeH/2, planeW, wallH, 0],
+        [-planeW/2, 0, planeH, wallH, Math.PI/2], [planeW/2, 0, planeH, wallH, Math.PI/2]
+      ]) {
+        const wGeo = new THREE.PlaneGeometry(ww, wh);
+        const wMesh = new THREE.Mesh(wGeo, wallMat);
+        wMesh.position.set(wx, wy, wallH/2 - 2);
+        wMesh.rotation.x = Math.PI/2;
+        wMesh.rotation.z = rz;
+        group.add(wMesh);
+      }
+      threeScene.add(group);
+      threeMesh = group;
+    } else if (backMode === 'mirror') {
+      const group = new THREE.Group();
+      group.add(mainMesh);
+      const backGeo = geo.clone();
+      const backPos = backGeo.attributes.position;
+      for (let i = 0; i < backPos.count; i++) backPos.setZ(i, -backPos.getZ(i));
+      backGeo.computeVertexNormals();
+      const backMat = threeMaterial.clone();
+      group.add(new THREE.Mesh(backGeo, backMat));
+      threeScene.add(group);
+      threeMesh = group;
+    } else {
+      threeScene.add(mainMesh);
+      threeMesh = mainMesh;
+    }
   }
 
-  // Sync light
   update3DLight();
   render3D();
+  document.getElementById('depthStatus').textContent =
+    'Depth: ' + (document.getElementById('depthSource').value === 'ml' ? 'ML' : 'Sobel') +
+    ' | ' + renderMode + ' | smooth=' + document.getElementById('depthSmooth').value;
 }
 
 // Update 3D texture from output canvas
 function update3DTexture() {
   if (!viewer3DActive || !threeMesh) return;
-  const meshObj = threeMesh.isMesh ? threeMesh : (threeMesh.children && threeMesh.children[0]);
-  if (!meshObj || !meshObj.material || !meshObj.material.map) return;
-  meshObj.material.map.image = canvas;
-  meshObj.material.map.needsUpdate = true;
+
+  if (threeMesh.isPoints) {
+    // Point cloud: update vertex colors from the canvas
+    const geo = threeMesh.geometry;
+    const colors = geo.attributes.color;
+    if (!colors) return;
+    const pcW = Math.round(Math.sqrt(colors.count * (canvas.width / canvas.height)));
+    const pcH = Math.round(colors.count / pcW);
+    const tc = document.createElement('canvas');
+    tc.width = pcW; tc.height = pcH;
+    tc.getContext('2d').drawImage(canvas, 0, 0, pcW, pcH);
+    const cd = tc.getContext('2d').getImageData(0, 0, pcW, pcH).data;
+    for (let i = 0; i < colors.count; i++) {
+      colors.setXYZ(i, cd[i*4]/255, cd[i*4+1]/255, cd[i*4+2]/255);
+    }
+    colors.needsUpdate = true;
+  } else {
+    const meshObj = threeMesh.isMesh ? threeMesh : (threeMesh.children && threeMesh.children[0]);
+    if (!meshObj || !meshObj.material || !meshObj.material.map) return;
+    meshObj.material.map.image = canvas;
+    meshObj.material.map.needsUpdate = true;
+  }
+  render3D();
+}
+
+// Update point cloud size without rebuild
+function updatePointSize() {
+  if (!threeMesh || !threeMesh.isPoints) return;
+  threeMesh.material.size = parseFloat(document.getElementById('pointSize').value) || 2;
   render3D();
 }
 
 // Update displacement without rebuilding
 function update3DMesh() {
   if (!viewer3DActive || !threeMesh) return;
-  rebuild3DMesh(); // For now, full rebuild (fast enough with cached depth)
+  rebuild3DMesh();
 }
 
 // Sync Three.js light with UI controls
@@ -1825,6 +2057,10 @@ async function toggle3DViewer() {
     btn.classList.add('on');
     if (!threeRenderer) await init3DViewer();
     else { rebuild3DMesh(); render3D(); }
+    // Auto-trigger ML depth if not yet computed and image is loaded
+    if (!mlDepthMap && srcImage && document.getElementById('depthSource').value === 'ml') {
+      estimateDepthML();
+    }
     // Show camera path box if video is loaded
     if (document.getElementById('videoPanel').style.display !== 'none') {
       document.getElementById('cameraPathBox').style.display = '';
@@ -1840,6 +2076,7 @@ async function toggle3DViewer() {
 
 function toggle3DWireframe() {
   if (!threeMesh) return;
+  if (threeMesh.isPoints) return; // no wireframe for point cloud
   const wf = document.getElementById('showWireframe').checked;
   const setWF = (obj) => { if (obj.material) obj.material.wireframe = wf; if (obj.children) obj.children.forEach(setWF); };
   setWF(threeMesh);
