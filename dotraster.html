@@ -1729,6 +1729,14 @@ async function startVideoRender() {
 
   const t0 = performance.now();
 
+  // Create a dedicated offscreen canvas for pixel extraction (avoids touching visible canvas)
+  const extractCanvas = document.createElement('canvas');
+  extractCanvas.width = cw; extractCanvas.height = ch;
+  const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
+
+  // Batch size: update UI every N frames (reduces DOM overhead)
+  const uiUpdateInterval = Math.max(1, Math.min(5, Math.floor(totalFrames / 50)));
+
   for (let f = 0; f < totalFrames; f++) {
     if (videoRenderCancel) break;
 
@@ -1740,35 +1748,23 @@ async function startVideoRender() {
       videoEl.onseeked = resolve;
     });
 
-    // Draw frame
-    frameCtx.drawImage(videoEl, 0, 0, vw, vh);
-    const frameSrc = frameCanvas.toDataURL('image/png');
+    // Draw video frame directly to extraction canvas with transforms
+    // NO toDataURL / NO Image decode — this is the key optimization
+    extractCtx.save();
+    extractCtx.translate(cw / 2, ch / 2);
+    extractCtx.rotate(rotation * Math.PI / 180);
+    if (flipHorz) extractCtx.scale(-1, 1);
+    extractCtx.drawImage(videoEl, -outW / 2, -outH / 2, outW, outH);
+    extractCtx.restore();
 
-    // Load as image and process
-    const img = await new Promise(resolve => {
-      const im = new Image();
-      im.onload = () => resolve(im);
-      im.src = frameSrc;
-    });
-
-    srcImage = img; origW = img.width; origH = img.height;
-
-    // Draw source to output canvas with transforms
-    canvas.width = cw; canvas.height = ch;
-    ctx.save();
-    ctx.translate(cw / 2, ch / 2);
-    ctx.rotate(rotation * Math.PI / 180);
-    if (flipHorz) ctx.scale(-1, 1);
-    ctx.drawImage(img, -outW / 2, -outH / 2, outW, outH);
-    ctx.restore();
-
-    const imgd = ctx.getImageData(0, 0, cw, ch);
+    // Extract pixel data directly
+    const imgd = extractCtx.getImageData(0, 0, cw, ch);
     const imageData = new Uint8Array(imgd.data.buffer);
     const pxCount = cw * ch;
     const oR = new Uint8Array(pxCount), oG = new Uint8Array(pxCount), oB = new Uint8Array(pxCount);
     for (let i = 0; i < pxCount; i++) { oR[i] = imageData[i * 4]; oG[i] = imageData[i * 4 + 1]; oB[i] = imageData[i * 4 + 2]; }
 
-    // Process via worker
+    // Process via WASM worker
     const resultData = await processFrameViaWorker(imageData, oR, oG, oB, cw, ch);
 
     // Put processed frame on recording canvas (pad to even size)
@@ -1777,33 +1773,35 @@ async function startVideoRender() {
     recCtx.fillRect(0, 0, cwEven, chEven);
     recCtx.putImageData(resultImageData, 0, 0);
 
-    // Also show on main canvas
-    canvas.width = cw; canvas.height = ch;
-    ctx.putImageData(resultImageData, 0, 0);
-
     if (useMediaRecorder) {
       stream.getVideoTracks()[0].requestFrame();
     } else {
       // Collect frame as JPEG for FFmpeg
-      const blob = await new Promise(r => recCanvas.toBlob(r, 'image/jpeg', 0.95));
+      const blob = await new Promise(r => recCanvas.toBlob(r, 'image/jpeg', 0.92));
       const buf = await blob.arrayBuffer();
       renderedFrames.push(new Uint8Array(buf));
     }
 
-    // Update progress
-    const pct = Math.round((f + 1) / totalFrames * 100);
-    document.getElementById('vrProgressBar').style.width = pct + '%';
-    document.getElementById('vrProgressText').textContent = pct + '%';
-    const elapsed = (performance.now() - t0) / 1000;
-    const eta = elapsed / (f + 1) * (totalFrames - f - 1);
-    document.getElementById('vrStatus').textContent =
-      'Frame ' + (f + 1) + '/' + totalFrames +
-      ' | ' + elapsed.toFixed(1) + 's elapsed' +
-      ' | ETA ' + eta.toFixed(1) + 's';
-    document.getElementById('vrPlayhead').style.left = ((t - startT) / (endT - startT) * 100) + '%';
+    // Update visible canvas + UI less frequently (reduces DOM thrashing)
+    if (f % uiUpdateInterval === 0 || f === totalFrames - 1) {
+      if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+      ctx.putImageData(resultImageData, 0, 0);
 
-    // Yield to UI
-    await new Promise(r => setTimeout(r, 0));
+      const pct = Math.round((f + 1) / totalFrames * 100);
+      document.getElementById('vrProgressBar').style.width = pct + '%';
+      document.getElementById('vrProgressText').textContent = pct + '%';
+      const elapsed = (performance.now() - t0) / 1000;
+      const fpsActual = (f + 1) / elapsed;
+      const eta = elapsed / (f + 1) * (totalFrames - f - 1);
+      document.getElementById('vrStatus').textContent =
+        'Frame ' + (f + 1) + '/' + totalFrames +
+        ' | ' + fpsActual.toFixed(1) + ' fps' +
+        ' | ETA ' + (eta < 60 ? eta.toFixed(0) + 's' : (eta/60).toFixed(1) + 'm');
+      document.getElementById('vrPlayhead').style.left = ((t - startT) / (endT - startT) * 100) + '%';
+
+      // Yield to UI
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
   if (videoRenderCancel) {
