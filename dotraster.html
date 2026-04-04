@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Raster Studio</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
 <style>
 /* ===== WINDOWS CLASSIC THEME ===== */
 :root {
@@ -131,6 +139,14 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
 /* Preview canvas (small) */
 .preview-box{width:100%;height:80px;background:#888;margin-bottom:4px;display:flex;align-items:center;justify-content:center;border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker)}
 .preview-box canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
+
+/* 3D Viewer */
+#threeCanvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;display:none}
+.loading-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:12px;gap:8px}
+.loading-overlay .lo-bar{width:200px;height:14px;background:var(--field);border:2px solid;border-color:var(--darker) var(--light) var(--light) var(--darker);overflow:hidden}
+.loading-overlay .lo-fill{height:100%;background:var(--title-bg);width:0%;transition:width 0.3s}
+.cam-preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin:3px 0}
+.cam-preset-grid .wb{font-size:9px;padding:2px 2px;text-align:center}
 </style>
 </head>
 <body>
@@ -499,6 +515,34 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
           <div class="cr" id="detectedLightInfo" style="font-size:10px;color:var(--darker)">Not analyzed</div>
         </fieldset>
 
+        <!-- ===== 3D VIEWER ===== -->
+        <fieldset class="gb" id="viewer3DBox"><span class="gl">3D Viewer</span>
+          <div class="cr"><input type="checkbox" class="wc" id="viewer3DEnabled" onchange="toggle3DViewer()"><label for="viewer3DEnabled">Enable 3D</label>
+            <button class="wb" onclick="estimateDepthML()" style="margin-left:auto;font-size:9px" title="Run ML depth estimation (downloads ~25MB model on first use)">ML Depth</button>
+          </div>
+          <div class="cr"><label>Depth</label>
+            <select class="ws" id="depthSource" onchange="onDepthSourceChange()">
+              <option value="sobel">Sobel (fast)</option>
+              <option value="ml">ML Model (accurate)</option>
+            </select>
+          </div>
+          <div class="cr"><label>Displace</label><input type="range" id="displaceHeight" min="0" max="300" value="80" oninput="updateVals();update3DMesh()"><span class="vl" id="displaceHeightVal">80</span></div>
+          <div class="cr"><label>Mesh</label><select class="ws" id="meshResolution" onchange="rebuild3DMesh()">
+            <option value="128">128 (fast)</option><option value="256" selected>256</option><option value="512">512 (detail)</option>
+          </select></div>
+          <div class="cr"><label>Back</label><select class="ws" id="meshBackMode" onchange="rebuild3DMesh()">
+            <option value="relief">Relief</option><option value="mirror">Mirror</option><option value="solid">Solid Box</option><option value="open">Open</option>
+          </select></div>
+          <div class="cr"><input type="checkbox" class="wc" id="showWireframe" onchange="toggle3DWireframe()"><label for="showWireframe">Wireframe</label>
+            <input type="checkbox" class="wc" id="realtime3DLight" onchange="toggle3DLightMode()"><label for="realtime3DLight">RT Light</label>
+          </div>
+          <div class="br">
+            <button class="wb" onclick="reset3DCamera()">Reset View</button>
+            <button class="wb" onclick="toggle3DAutoRotate()">Auto-Rotate</button>
+          </div>
+          <div class="cr" id="depthStatus" style="font-size:10px;color:var(--darker)">Depth: Sobel</div>
+        </fieldset>
+
         <!-- ===== OUTPUT COLORS ===== -->
         <fieldset class="gb"><span class="gl">Output</span>
           <div class="cr"><label>Dot</label><input type="color" id="dotColor" value="#000000"><label style="min-width:auto">BG</label><input type="color" id="bgColor" value="#ffffff"></div>
@@ -535,6 +579,37 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
           </select></div>
           <div class="cr"><label>Trim Start</label><input type="range" id="vrTrimStart" min="0" max="1000" value="0"><span class="vl" id="vrTrimStartVal">0.0s</span></div>
           <div class="cr"><label>Trim End</label><input type="range" id="vrTrimEnd" min="0" max="1000" value="1000"><span class="vl" id="vrTrimEndVal">--</span></div>
+
+          <!-- Camera Path (3D only) -->
+          <fieldset class="gb" id="cameraPathBox" style="display:none"><span class="gl">Camera Path</span>
+            <div class="cr"><label>Mode</label><select class="ws" id="cameraMode" onchange="onCameraModeChange()">
+              <option value="static">Static (2D)</option>
+              <option value="orbit">Orbit</option>
+              <option value="dolly">Dolly In/Out</option>
+              <option value="pan">Pan</option>
+            </select></div>
+            <div id="camOrbitOpts">
+              <div class="cr"><label>Start Az</label><input type="range" id="camStartAz" min="0" max="360" value="0" oninput="document.getElementById('camStartAzVal').textContent=this.value+'°'"><span class="vl" id="camStartAzVal">0°</span></div>
+              <div class="cr"><label>End Az</label><input type="range" id="camEndAz" min="0" max="360" value="360" oninput="document.getElementById('camEndAzVal').textContent=this.value+'°'"><span class="vl" id="camEndAzVal">360°</span></div>
+              <div class="cr"><label>Elevation</label><input type="range" id="camElev" min="-80" max="80" value="25" oninput="document.getElementById('camElevVal').textContent=this.value+'°'"><span class="vl" id="camElevVal">25°</span></div>
+              <div class="cr"><label>Distance</label><input type="range" id="camDist" min="50" max="400" value="180" oninput="document.getElementById('camDistVal').textContent=this.value"><span class="vl" id="camDistVal">180</span></div>
+            </div>
+            <div class="cr"><label>Easing</label><select class="ws" id="camEasing">
+              <option value="linear">Linear</option>
+              <option value="ease-in-out" selected>Ease In/Out</option>
+              <option value="ease-in">Ease In</option>
+            </select></div>
+            <div class="sub-title">Presets</div>
+            <div class="cam-preset-grid">
+              <button class="wb" onclick="setCamPreset('orbit360')">360° Orbit</button>
+              <button class="wb" onclick="setCamPreset('front')">Front</button>
+              <button class="wb" onclick="setCamPreset('top')">Top Down</button>
+              <button class="wb" onclick="setCamPreset('side')">Side</button>
+              <button class="wb" onclick="setCamPreset('flyover')">Flyover</button>
+              <button class="wb" onclick="setCamPreset('dollyIn')">Dolly In</button>
+            </div>
+          </fieldset>
+
           <div class="sub-title">Render</div>
           <div class="vr-progress-wrap" id="vrProgressWrap" style="display:none">
             <div class="vr-progress-bar" id="vrProgressBar"></div>
@@ -555,6 +630,12 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
     <div class="ca sunken" id="canvasArea">
       <div class="dh" id="dropHint"><span class="ic">&#9680;</span>Drop Image Here<br><small>or click Open...</small></div>
       <canvas id="outputCanvas" style="display:none"></canvas>
+      <canvas id="threeCanvas"></canvas>
+      <div class="loading-overlay" id="depthLoadingOverlay" style="display:none">
+        <div>🧠 Loading Depth Model...</div>
+        <div class="lo-bar"><div class="lo-fill" id="depthLoadFill"></div></div>
+        <div id="depthLoadText" style="font-size:10px">Downloading (~25MB)...</div>
+      </div>
     </div>
   </div>
 
@@ -562,6 +643,7 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
     <div class="ss" id="statusInfo">Ready</div>
     <div class="ss sm" id="statusSize">--</div>
     <div class="ss sm"><div class="zb">
+      <button class="wb" id="btn3DToggle" onclick="document.getElementById('viewer3DEnabled').checked=!document.getElementById('viewer3DEnabled').checked;toggle3DViewer()" style="font-size:9px;font-weight:bold" title="Toggle 3D Viewer">3D</button>
       <button class="wb" id="showOrigBtn" onmousedown="showOriginal(true)" onmouseup="showOriginal(false)" onmouseleave="showOriginal(false)" title="Hold to see original">Orig</button>
       <input type="checkbox" id="lockPreview" class="wc" title="Lock: never show original during processing"><label for="lockPreview" style="font-size:9px;cursor:pointer" title="Lock preview (no original flash)">Lock</label>
       <button class="wb" onclick="zoomOut()">-</button><span id="zoomLevel">100%</span>
@@ -578,6 +660,16 @@ let isProcessing=false, processQueued=false;
 let activeMode='dotraster', halftoneType='am', stochType='serpentine', ptShape='circle';
 let patternRotation=0, customMatrix=null, activeLayers=[true,true,true,true];
 let selectedPattern=0;
+
+// 3D Viewer state
+let mlDepthMap = null;       // Float32Array from ML model
+let sobelDepthMap = null;    // Float32Array from Sobel
+let depthPipeline = null;    // Transformers.js pipeline instance
+let threeScene = null, threeCamera = null, threeRenderer = null, threeControls = null;
+let threeMesh = null, threeLight = null, threeMaterial = null;
+let threeLoaded = false, transformersLoaded = false;
+let viewer3DActive = false;
+let THREE = null, OrbitControls = null;
 
 const canvas=document.getElementById('outputCanvas');
 const ctx=canvas.getContext('2d',{willReadFrequently:true});
@@ -599,9 +691,13 @@ function loadFile(file){
     document.getElementById('scaleVal').textContent='100%';
     aspectRatio=img.width/img.height;rotation=0;flipHorz=false;
     document.getElementById('dropHint').style.display='none';
-    canvas.style.display='block';processImage();
-    // Update depth map preview
-    setTimeout(()=>{ if(typeof updateDepthPreview==='function') updateDepthPreview(); }, 100);
+    canvas.style.display= viewer3DActive ? 'none' : 'block'; processImage();
+    // Update depth map preview + 3D mesh
+    mlDepthMap = null; sobelDepthMap = null; // invalidate cached depth
+    setTimeout(()=>{
+      if(typeof updateDepthPreview==='function') updateDepthPreview();
+      if(viewer3DActive && typeof rebuild3DMesh==='function') rebuild3DMesh();
+    }, 200);
   };img.src=e.target.result};reader.readAsDataURL(file);
 }
 
@@ -848,7 +944,8 @@ function updateVals(){
     colorizeStrVal:['colorizeStr','%'],rgbOffXVal:['rgbOffX',''],rgbOffYVal:['rgbOffY',''],
     dgShadowVal:['dgShadow','%'],dgHighlightVal:['dgHighlight','%'],patternSizeVal:['patternSize',''],patternIntensityVal:['patternIntensity',''],
     lightAzimuthVal:['lightAzimuth','°'],lightElevationVal:['lightElevation','°'],lightIntensityVal:['lightIntensity','%'],
-    lightAmbientVal:['lightAmbient','%'],lightShininessVal:['lightShininess','']
+    lightAmbientVal:['lightAmbient','%'],lightShininessVal:['lightShininess',''],
+    displaceHeightVal:['displaceHeight','']
   };
   for(const[d,[s,suf]]of Object.entries(m)){const el=document.getElementById(d),se=document.getElementById(s);if(el&&se)el.textContent=se.value+suf}
   document.getElementById('gammaVal').textContent=(parseInt(document.getElementById('gamma').value)/100).toFixed(1);
@@ -859,6 +956,7 @@ function updateVals(){
   document.getElementById('ptBGHex').textContent=document.getElementById('ptBGColor').value.toUpperCase();
   document.getElementById('lightBumpVal').textContent=(parseInt(document.getElementById('lightBump').value)/100).toFixed(1);
   if(typeof drawLightGizmo==='function')drawLightGizmo();
+  if(typeof update3DLight==='function' && viewer3DActive) update3DLight();
 }
 
 // ========== WEB WORKER + WASM ==========
@@ -884,6 +982,7 @@ worker.onmessage = function(e) {
     // Only resize canvas if dimensions changed (avoids white flash from clearing)
     if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
     ctx.putImageData(imgData, 0, 0);
+    if (viewer3DActive) update3DTexture();
     applyZoom();
     const t1 = performance.now();
     document.getElementById('statusInfo').textContent =
@@ -946,8 +1045,8 @@ function processImage(){
     invert:document.getElementById('invertCheck').checked,
     dgShadow:parseInt(document.getElementById('dgShadow').value)/100,
     dgHighlight:parseInt(document.getElementById('dgHighlight').value)/100,
-    // Light Direction
-    lightEnabled:document.getElementById('lightEnabled').checked,
+    // Light Direction (skip baked light when using real-time 3D lighting)
+    lightEnabled:document.getElementById('lightEnabled').checked && !(viewer3DActive && document.getElementById('realtime3DLight').checked),
     lightAzimuth:parseInt(document.getElementById('lightAzimuth').value),
     lightElevation:parseInt(document.getElementById('lightElevation').value),
     lightIntensity:parseInt(document.getElementById('lightIntensity').value)/100,
@@ -1044,8 +1143,16 @@ function processImage(){
   if(params.clrMode==='rgb-split'){params.clrParam1=parseInt(document.getElementById('rgbOffX').value);params.clrParam2=parseInt(document.getElementById('rgbOffY').value)}
 
   // Send to worker (transfer buffers for zero-copy)
-  const msg={type:'process',id:processId,imageData,oR,oG,oB,cw,ch,params};
-  worker.postMessage(msg,[imageData.buffer,oR.buffer,oG.buffer,oB.buffer]);
+  // Include ML depth map if available and active
+  const depthSrc = document.getElementById('depthSource').value;
+  let depthTransfer = null;
+  if (depthSrc === 'ml' && mlDepthMap && mlDepthMap.length === pxCount && params.lightEnabled) {
+    depthTransfer = new Float32Array(mlDepthMap);
+  }
+  const msg={type:'process',id:processId,imageData,oR,oG,oB,cw,ch,params,depthMap:depthTransfer};
+  const transfers = [imageData.buffer,oR.buffer,oG.buffer,oB.buffer];
+  if (depthTransfer) transfers.push(depthTransfer.buffer);
+  worker.postMessage(msg, transfers);
 
   document.getElementById('statusInfo').textContent='Processing...';
 }
@@ -1333,6 +1440,536 @@ function describeDirection(az) {
   return dirs[Math.round(((az % 360) + 360) % 360 / 45) % 8];
 }
 
+// ========== THREE.JS + ML DEPTH ==========
+
+// Lazy-load Three.js from CDN (importmap in <head> resolves bare "three" specifier)
+async function loadThreeJS() {
+  if (threeLoaded) return;
+  const [mod, ctrl] = await Promise.all([
+    import('three'),
+    import('three/addons/controls/OrbitControls.js')
+  ]);
+  THREE = mod;
+  OrbitControls = ctrl.OrbitControls;
+  threeLoaded = true;
+}
+
+// Lazy-load Transformers.js for ML depth
+async function loadTransformers() {
+  if (transformersLoaded) return;
+  const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3');
+  window.HFTransformers = mod;
+  transformersLoaded = true;
+}
+
+// ML Depth Estimation via Depth Anything V2
+async function estimateDepthML() {
+  if (!srcImage) { document.getElementById('depthStatus').textContent = 'No image'; return; }
+  const overlay = document.getElementById('depthLoadingOverlay');
+  const fillBar = document.getElementById('depthLoadFill');
+  const loadText = document.getElementById('depthLoadText');
+  overlay.style.display = 'flex';
+  fillBar.style.width = '10%';
+  loadText.textContent = 'Loading Transformers.js...';
+
+  try {
+    await loadTransformers();
+    fillBar.style.width = '30%';
+    loadText.textContent = 'Loading depth model (~25MB)...';
+
+    if (!depthPipeline) {
+      depthPipeline = await HFTransformers.pipeline('depth-estimation', 'Xenova/depth-anything-small-hf', {
+        device: 'webgpu' in navigator.gpu ? 'webgpu' : 'wasm',
+        progress_callback: (p) => {
+          if (p.status === 'progress' && p.total) {
+            const pct = Math.round(30 + (p.loaded / p.total) * 50);
+            fillBar.style.width = pct + '%';
+            loadText.textContent = 'Downloading model... ' + Math.round(p.loaded / 1024 / 1024) + 'MB / ' + Math.round(p.total / 1024 / 1024) + 'MB';
+          }
+        }
+      });
+    }
+    fillBar.style.width = '85%';
+    loadText.textContent = 'Running inference...';
+
+    // Convert srcImage to data URL for the pipeline
+    const tmpC = document.createElement('canvas');
+    const maxDim = 512;
+    const scale = Math.min(maxDim / origW, maxDim / origH, 1);
+    tmpC.width = Math.round(origW * scale);
+    tmpC.height = Math.round(origH * scale);
+    tmpC.getContext('2d').drawImage(srcImage, 0, 0, tmpC.width, tmpC.height);
+    const dataUrl = tmpC.toDataURL('image/png');
+
+    const result = await depthPipeline(dataUrl);
+
+    // result.depth is a RawImage with data, width, height
+    const depthData = result.depth;
+    const dw = depthData.width, dh = depthData.height;
+
+    // Resize depth to match output dimensions
+    const outW = parseInt(document.getElementById('outWidth').value) || origW;
+    const outH = parseInt(document.getElementById('outHeight').value) || origH;
+    const sw = rotation === 90 || rotation === 270;
+    const cw = sw ? outH : outW, ch = sw ? outW : outH;
+
+    // Resample depth map to output size
+    mlDepthMap = new Float32Array(cw * ch);
+    const rawDepth = depthData.data; // Uint8Array or Float32Array
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const sx = Math.floor(x * dw / cw);
+        const sy = Math.floor(y * dh / ch);
+        const val = rawDepth[sy * dw + sx];
+        // Normalize to 0..1
+        mlDepthMap[y * cw + x] = (typeof val === 'number' ? val : 0) / 255;
+      }
+    }
+
+    document.getElementById('depthSource').value = 'ml';
+    document.getElementById('depthStatus').textContent = 'Depth: ML (' + dw + 'x' + dh + ')';
+    fillBar.style.width = '100%';
+    loadText.textContent = 'Done!';
+
+    updateDepthPreview();
+    if (viewer3DActive) rebuild3DMesh();
+    scheduleProcess();
+
+    setTimeout(() => { overlay.style.display = 'none'; }, 800);
+  } catch (e) {
+    console.error('ML Depth error:', e);
+    loadText.textContent = 'Error: ' + e.message;
+    fillBar.style.width = '0%';
+    setTimeout(() => { overlay.style.display = 'none'; }, 3000);
+    document.getElementById('depthStatus').textContent = 'ML depth failed';
+  }
+}
+
+function onDepthSourceChange() {
+  const src = document.getElementById('depthSource').value;
+  if (src === 'ml' && !mlDepthMap) {
+    estimateDepthML();
+  } else {
+    document.getElementById('depthStatus').textContent = 'Depth: ' + (src === 'ml' ? 'ML' : 'Sobel');
+    if (viewer3DActive) rebuild3DMesh();
+    scheduleProcess();
+  }
+}
+
+// Generate Sobel depth map from current image
+function generateSobelDepth(cw, ch) {
+  if (!srcImage) return null;
+  const tc = document.createElement('canvas'); tc.width = cw; tc.height = ch;
+  const tctx = tc.getContext('2d');
+  tctx.save(); tctx.translate(cw/2, ch/2); tctx.rotate(rotation*Math.PI/180);
+  if (flipHorz) tctx.scale(-1,1);
+  const outW = parseInt(document.getElementById('outWidth').value) || origW;
+  const outH = parseInt(document.getElementById('outHeight').value) || origH;
+  tctx.drawImage(srcImage, -outW/2, -outH/2, outW, outH); tctx.restore();
+  const imgd = tctx.getImageData(0, 0, cw, ch);
+  const d = imgd.data;
+
+  const gray = new Float32Array(cw * ch);
+  for (let i = 0; i < cw * ch; i++) gray[i] = (d[i*4]*0.299 + d[i*4+1]*0.587 + d[i*4+2]*0.114) / 255;
+
+  // Sobel magnitude as depth proxy
+  const depth = new Float32Array(cw * ch);
+  for (let y = 1; y < ch - 1; y++) {
+    for (let x = 1; x < cw - 1; x++) {
+      const gx = -gray[(y-1)*cw+(x-1)] - 2*gray[y*cw+(x-1)] - gray[(y+1)*cw+(x-1)]
+                 +gray[(y-1)*cw+(x+1)] + 2*gray[y*cw+(x+1)] + gray[(y+1)*cw+(x+1)];
+      const gy = -gray[(y-1)*cw+(x-1)] - 2*gray[(y-1)*cw+x] - gray[(y-1)*cw+(x+1)]
+                 +gray[(y+1)*cw+(x-1)] + 2*gray[(y+1)*cw+x] + gray[(y+1)*cw+(x+1)];
+      depth[y * cw + x] = Math.sqrt(gx*gx + gy*gy);
+    }
+  }
+  // Normalize
+  let maxD = 0;
+  for (let i = 0; i < depth.length; i++) if (depth[i] > maxD) maxD = depth[i];
+  if (maxD > 0) for (let i = 0; i < depth.length; i++) depth[i] /= maxD;
+
+  // Blur edges for smoother depth
+  const smoothed = new Float32Array(cw * ch);
+  const bk = 3;
+  for (let y = bk; y < ch - bk; y++) {
+    for (let x = bk; x < cw - bk; x++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -bk; dy <= bk; dy++) for (let dx = -bk; dx <= bk; dx++) {
+        sum += depth[(y+dy)*cw+(x+dx)]; cnt++;
+      }
+      smoothed[y*cw+x] = sum / cnt;
+    }
+  }
+
+  // Combine brightness (bright=near) with edges for depth
+  const combined = new Float32Array(cw * ch);
+  for (let i = 0; i < cw * ch; i++) {
+    combined[i] = gray[i] * 0.7 + (1 - smoothed[i]) * 0.3;
+  }
+  sobelDepthMap = combined;
+  return combined;
+}
+
+// Get active depth map
+function getActiveDepthMap(cw, ch) {
+  const src = document.getElementById('depthSource').value;
+  if (src === 'ml' && mlDepthMap && mlDepthMap.length === cw * ch) return mlDepthMap;
+  if (!sobelDepthMap || sobelDepthMap.length !== cw * ch) generateSobelDepth(cw, ch);
+  return sobelDepthMap;
+}
+
+// Initialize Three.js scene
+async function init3DViewer() {
+  if (!threeLoaded) await loadThreeJS();
+  const ca = document.getElementById('canvasArea');
+  const tc = document.getElementById('threeCanvas');
+  const w = ca.clientWidth, h = ca.clientHeight;
+
+  threeRenderer = new THREE.WebGLRenderer({ canvas: tc, antialias: true, alpha: false });
+  threeRenderer.setSize(w, h);
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  threeRenderer.setClearColor(0x3a3a50);
+
+  threeScene = new THREE.Scene();
+
+  // Camera
+  threeCamera = new THREE.PerspectiveCamera(45, w / h, 0.1, 2000);
+  threeCamera.position.set(0, 0, 180);
+
+  // Orbit controls
+  threeControls = new OrbitControls(threeCamera, tc);
+  threeControls.enableDamping = true;
+  threeControls.dampingFactor = 0.08;
+  threeControls.minDistance = 30;
+  threeControls.maxDistance = 600;
+  threeControls.addEventListener('change', render3D);
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+  threeScene.add(ambient);
+  threeLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  threeLight.position.set(1, 1, 1);
+  threeScene.add(threeLight);
+
+  // Build initial mesh if image is loaded
+  if (srcImage) rebuild3DMesh();
+
+  // Animation loop
+  function animate() {
+    if (!viewer3DActive) return;
+    requestAnimationFrame(animate);
+    threeControls.update();
+    threeRenderer.render(threeScene, threeCamera);
+  }
+  animate();
+
+  // Handle resize
+  const ro = new ResizeObserver(() => {
+    if (!viewer3DActive) return;
+    const nw = ca.clientWidth, nh = ca.clientHeight;
+    threeCamera.aspect = nw / nh;
+    threeCamera.updateProjectionMatrix();
+    threeRenderer.setSize(nw, nh);
+  });
+  ro.observe(ca);
+}
+
+function render3D() {
+  if (threeRenderer && threeScene && threeCamera) {
+    threeRenderer.render(threeScene, threeCamera);
+  }
+}
+
+// Build/rebuild displacement mesh
+function rebuild3DMesh() {
+  if (!threeScene || !srcImage) return;
+
+  // Remove old mesh
+  if (threeMesh) { threeScene.remove(threeMesh); threeMesh.geometry.dispose(); if (threeMesh.material.map) threeMesh.material.map.dispose(); threeMesh.material.dispose(); }
+
+  const outW = parseInt(document.getElementById('outWidth').value) || origW;
+  const outH = parseInt(document.getElementById('outHeight').value) || origH;
+  const sw = rotation === 90 || rotation === 270;
+  const cw = sw ? outH : outW, ch = sw ? outW : outH;
+  const res = parseInt(document.getElementById('meshResolution').value) || 256;
+  const displaceH = parseInt(document.getElementById('displaceHeight').value) || 80;
+  const backMode = document.getElementById('meshBackMode').value;
+
+  // Get depth map
+  const depthMap = getActiveDepthMap(cw, ch);
+  if (!depthMap) return;
+
+  // Create texture from output canvas
+  let texture;
+  if (canvas.width > 0 && canvas.height > 0) {
+    texture = new THREE.CanvasTexture(canvas);
+  } else {
+    // Use source image
+    texture = new THREE.Texture(srcImage);
+  }
+  texture.needsUpdate = true;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  // Create geometry
+  const aspect = cw / ch;
+  const planeW = 100 * aspect, planeH = 100;
+  const segX = Math.min(res, cw), segY = Math.min(res, ch);
+  const geo = new THREE.PlaneGeometry(planeW, planeH, segX, segY);
+
+  // Displace vertices
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = (pos.getX(i) / planeW + 0.5);  // 0..1
+    const v = (pos.getY(i) / planeH + 0.5);  // 0..1
+    const sx = Math.floor(u * (cw - 1));
+    const sy = Math.floor((1 - v) * (ch - 1)); // flip Y
+    const di = sy * cw + sx;
+    const d = depthMap[di] || 0;
+    pos.setZ(i, d * displaceH * 0.5);
+  }
+  geo.computeVertexNormals();
+
+  // Material with texture - use Phong for proper lighting
+  const useRTLight = document.getElementById('realtime3DLight').checked;
+  threeMaterial = new THREE.MeshPhongMaterial({
+    map: texture,
+    side: THREE.DoubleSide,
+    wireframe: document.getElementById('showWireframe').checked,
+    shininess: parseInt(document.getElementById('lightShininess').value) || 32,
+    flatShading: false,
+  });
+
+  threeMesh = new THREE.Mesh(geo, threeMaterial);
+
+  // Handle back mode
+  if (backMode === 'solid') {
+    // Add box sides and bottom
+    const group = new THREE.Group();
+    group.add(threeMesh);
+    // Bottom plane
+    const bottomGeo = new THREE.PlaneGeometry(planeW, planeH);
+    const bottomMat = new THREE.MeshPhongMaterial({ color: 0x808080, side: THREE.DoubleSide });
+    const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
+    bottomMesh.position.z = -2;
+    group.add(bottomMesh);
+    threeScene.add(group);
+    threeMesh = group;
+  } else if (backMode === 'mirror') {
+    const group = new THREE.Group();
+    group.add(threeMesh);
+    // Mirrored back face
+    const backGeo = geo.clone();
+    const backPos = backGeo.attributes.position;
+    for (let i = 0; i < backPos.count; i++) {
+      backPos.setZ(i, -backPos.getZ(i)); // mirror depth
+    }
+    backGeo.computeVertexNormals();
+    const backMat = threeMaterial.clone();
+    const backMesh = new THREE.Mesh(backGeo, backMat);
+    group.add(backMesh);
+    threeScene.add(group);
+    threeMesh = group;
+  } else {
+    threeScene.add(threeMesh);
+  }
+
+  // Sync light
+  update3DLight();
+  render3D();
+}
+
+// Update 3D texture from output canvas
+function update3DTexture() {
+  if (!viewer3DActive || !threeMesh) return;
+  const meshObj = threeMesh.isMesh ? threeMesh : (threeMesh.children && threeMesh.children[0]);
+  if (!meshObj || !meshObj.material || !meshObj.material.map) return;
+  meshObj.material.map.image = canvas;
+  meshObj.material.map.needsUpdate = true;
+  render3D();
+}
+
+// Update displacement without rebuilding
+function update3DMesh() {
+  if (!viewer3DActive || !threeMesh) return;
+  rebuild3DMesh(); // For now, full rebuild (fast enough with cached depth)
+}
+
+// Sync Three.js light with UI controls
+function update3DLight() {
+  if (!threeLight) return;
+  const az = (parseInt(document.getElementById('lightAzimuth').value) || 0) * Math.PI / 180;
+  const el = (parseInt(document.getElementById('lightElevation').value) || 45) * Math.PI / 180;
+  const intensity = parseInt(document.getElementById('lightIntensity').value) / 100;
+  const r = 200;
+  threeLight.position.set(
+    Math.cos(az) * Math.cos(el) * r,
+    Math.sin(el) * r,
+    Math.sin(az) * Math.cos(el) * r
+  );
+  threeLight.intensity = intensity * 1.5;
+  render3D();
+}
+
+// Toggle 3D viewer
+async function toggle3DViewer() {
+  const enabled = document.getElementById('viewer3DEnabled').checked;
+  const tc = document.getElementById('threeCanvas');
+  const oc = document.getElementById('outputCanvas');
+  const btn = document.getElementById('btn3DToggle');
+
+  if (enabled) {
+    viewer3DActive = true;
+    tc.style.display = 'block';
+    oc.style.display = 'none';
+    btn.classList.add('on');
+    if (!threeRenderer) await init3DViewer();
+    else { rebuild3DMesh(); render3D(); }
+    // Show camera path box if video is loaded
+    if (document.getElementById('videoPanel').style.display !== 'none') {
+      document.getElementById('cameraPathBox').style.display = '';
+    }
+  } else {
+    viewer3DActive = false;
+    tc.style.display = 'none';
+    if (srcImage) oc.style.display = 'block';
+    btn.classList.remove('on');
+    document.getElementById('cameraPathBox').style.display = 'none';
+  }
+}
+
+function toggle3DWireframe() {
+  if (!threeMesh) return;
+  const wf = document.getElementById('showWireframe').checked;
+  const setWF = (obj) => { if (obj.material) obj.material.wireframe = wf; if (obj.children) obj.children.forEach(setWF); };
+  setWF(threeMesh);
+  render3D();
+}
+
+function toggle3DLightMode() {
+  // RT Light: disable baked light in WASM, use Three.js lighting
+  scheduleProcess();
+  update3DLight();
+}
+
+function toggle3DAutoRotate() {
+  if (!threeControls) return;
+  threeControls.autoRotate = !threeControls.autoRotate;
+  threeControls.autoRotateSpeed = 2;
+  if (threeControls.autoRotate) {
+    function autoLoop() {
+      if (!threeControls.autoRotate || !viewer3DActive) return;
+      requestAnimationFrame(autoLoop);
+      threeControls.update();
+      threeRenderer.render(threeScene, threeCamera);
+    }
+    autoLoop();
+  }
+}
+
+function reset3DCamera() {
+  if (!threeCamera || !threeControls) return;
+  threeCamera.position.set(0, 0, 180);
+  threeControls.target.set(0, 0, 0);
+  threeControls.update();
+  render3D();
+}
+
+// ========== CAMERA PATH ==========
+function onCameraModeChange() {
+  const mode = document.getElementById('cameraMode').value;
+  document.getElementById('camOrbitOpts').style.display = (mode === 'static') ? 'none' : '';
+}
+
+function setCamPreset(name) {
+  const s = document.getElementById;
+  const presets = {
+    orbit360: { mode: 'orbit', startAz: 0, endAz: 360, elev: 25, dist: 180 },
+    front:    { mode: 'static', startAz: 0, endAz: 0, elev: 0, dist: 180 },
+    top:      { mode: 'orbit', startAz: 0, endAz: 360, elev: 75, dist: 200 },
+    side:     { mode: 'orbit', startAz: 90, endAz: 90, elev: 0, dist: 180 },
+    flyover:  { mode: 'orbit', startAz: 0, endAz: 180, elev: 60, dist: 250 },
+    dollyIn:  { mode: 'dolly', startAz: 0, endAz: 0, elev: 15, dist: 300 },
+  };
+  const p = presets[name]; if (!p) return;
+  document.getElementById('cameraMode').value = p.mode;
+  document.getElementById('camStartAz').value = p.startAz;
+  document.getElementById('camEndAz').value = p.endAz;
+  document.getElementById('camElev').value = p.elev;
+  document.getElementById('camDist').value = p.dist;
+  document.getElementById('camStartAzVal').textContent = p.startAz + '°';
+  document.getElementById('camEndAzVal').textContent = p.endAz + '°';
+  document.getElementById('camElevVal').textContent = p.elev + '°';
+  document.getElementById('camDistVal').textContent = p.dist;
+  onCameraModeChange();
+}
+
+// Apply easing function
+function applyEasing(t, type) {
+  if (type === 'ease-in-out') return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  if (type === 'ease-in') return t * t;
+  return t; // linear
+}
+
+// Compute camera position for a given progress (0..1) in the camera path
+function getCameraPathPosition(progress) {
+  const mode = document.getElementById('cameraMode').value;
+  const easing = document.getElementById('camEasing').value;
+  const t = applyEasing(progress, easing);
+  const startAz = parseInt(document.getElementById('camStartAz').value) * Math.PI / 180;
+  const endAz = parseInt(document.getElementById('camEndAz').value) * Math.PI / 180;
+  const elev = parseInt(document.getElementById('camElev').value) * Math.PI / 180;
+  const dist = parseInt(document.getElementById('camDist').value);
+
+  let az, el, d;
+  if (mode === 'orbit') {
+    az = startAz + (endAz - startAz) * t;
+    el = elev;
+    d = dist;
+  } else if (mode === 'dolly') {
+    az = startAz;
+    el = elev;
+    d = dist * (1 - t * 0.6); // dolly in to 40% of start distance
+  } else if (mode === 'pan') {
+    az = startAz;
+    el = elev;
+    d = dist;
+    // Pan: offset target instead of rotating
+    const panX = (t - 0.5) * 100;
+    return { x: Math.cos(az) * Math.cos(el) * d, y: Math.sin(el) * d, z: Math.sin(az) * Math.cos(el) * d, tx: panX, ty: 0, tz: 0 };
+  } else {
+    return { x: 0, y: 0, z: dist, tx: 0, ty: 0, tz: 0 };
+  }
+
+  return {
+    x: Math.cos(az) * Math.cos(el) * d,
+    y: Math.sin(el) * d,
+    z: Math.sin(az) * Math.cos(el) * d,
+    tx: 0, ty: 0, tz: 0
+  };
+}
+
+// Render a single 3D frame to a canvas (for video export)
+function render3DFrameToCanvas(targetCanvas, progress) {
+  if (!threeRenderer || !threeScene || !threeCamera) return;
+  const w = targetCanvas.width, h = targetCanvas.height;
+
+  // Set camera position from path
+  const pos = getCameraPathPosition(progress);
+  threeCamera.position.set(pos.x, pos.y, pos.z);
+  threeCamera.lookAt(pos.tx, pos.ty, pos.tz);
+  threeCamera.aspect = w / h;
+  threeCamera.updateProjectionMatrix();
+
+  // Render
+  threeRenderer.setSize(w, h, false);
+  threeRenderer.render(threeScene, threeCamera);
+
+  // Copy to target canvas
+  const tctx = targetCanvas.getContext('2d');
+  tctx.drawImage(threeRenderer.domElement, 0, 0, w, h);
+}
+
 // ========== DEPTH MAP PREVIEW ==========
 let _showDepthOnCanvas = false;
 
@@ -1458,6 +2095,7 @@ function loadVideo(file) {
     videoLoaded = true;
     document.getElementById('videoPanel').style.display = '';
     document.getElementById('miExportVideo').style.display = '';
+    if (viewer3DActive) document.getElementById('cameraPathBox').style.display = '';
     document.getElementById('vrHint').style.display = 'none';
     videoEl.style.display = '';
 
@@ -1771,7 +2409,25 @@ async function startVideoRender() {
     const resultImageData = new ImageData(new Uint8ClampedArray(resultData), cw, ch);
     recCtx.fillStyle = '#000';
     recCtx.fillRect(0, 0, cwEven, chEven);
-    recCtx.putImageData(resultImageData, 0, 0);
+
+    // 3D camera path rendering
+    const use3DCam = viewer3DActive && document.getElementById('cameraMode').value !== 'static' && threeRenderer;
+    if (use3DCam) {
+      // Update 3D texture with processed frame
+      const tmpCanvas3D = document.createElement('canvas');
+      tmpCanvas3D.width = cw; tmpCanvas3D.height = ch;
+      tmpCanvas3D.getContext('2d').putImageData(resultImageData, 0, 0);
+      const meshObj = threeMesh && (threeMesh.isMesh ? threeMesh : threeMesh.children[0]);
+      if (meshObj && meshObj.material && meshObj.material.map) {
+        meshObj.material.map.image = tmpCanvas3D;
+        meshObj.material.map.needsUpdate = true;
+      }
+      // Render 3D from camera path position
+      const progress = f / Math.max(1, totalFrames - 1);
+      render3DFrameToCanvas(recCanvas, progress);
+    } else {
+      recCtx.putImageData(resultImageData, 0, 0);
+    }
 
     if (useMediaRecorder) {
       stream.getVideoTracks()[0].requestFrame();
@@ -2006,9 +2662,17 @@ function processFrameViaWorker(imageData, oR, oG, oB, cw, ch) {
     const oRCopy = new Uint8Array(oR);
     const oGCopy = new Uint8Array(oG);
     const oBCopy = new Uint8Array(oB);
+    // Include depth map for video frames too
+    const depthSrc2 = document.getElementById('depthSource').value;
+    let depthT2 = null;
+    if (depthSrc2 === 'ml' && mlDepthMap && mlDepthMap.length === cw * ch && params.lightEnabled) {
+      depthT2 = new Float32Array(mlDepthMap);
+    }
+    const transfers2 = [dataCopy.buffer, oRCopy.buffer, oGCopy.buffer, oBCopy.buffer];
+    if (depthT2) transfers2.push(depthT2.buffer);
     worker.postMessage(
-      { type: 'process', id: frameId, imageData: dataCopy, oR: oRCopy, oG: oGCopy, oB: oBCopy, cw, ch, params },
-      [dataCopy.buffer, oRCopy.buffer, oGCopy.buffer, oBCopy.buffer]
+      { type: 'process', id: frameId, imageData: dataCopy, oR: oRCopy, oG: oGCopy, oB: oBCopy, cw, ch, params, depthMap: depthT2 },
+      transfers2
     );
   });
 }

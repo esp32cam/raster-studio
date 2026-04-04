@@ -24,7 +24,7 @@ onmessage = function(e) {
 };
 
 function processImage(msg) {
-  const { imageData, params, cw, ch, oR, oG, oB } = msg;
+  const { imageData, params, cw, ch, oR, oG, oB, depthMap: depthMapRaw } = msg;
   const pixelCount = cw * ch;
   const data = new Uint8Array(imageData);
 
@@ -59,12 +59,29 @@ function processImage(msg) {
 
   // ===== LIGHT DIRECTION =====
   if (params.lightEnabled) {
-    wasm.light_direction(
-      gray, cw, ch,
-      params.lightAzimuth, params.lightElevation,
-      params.lightIntensity, params.lightAmbient,
-      params.lightBump, params.lightSpecular, params.lightShininess
-    );
+    // When ML depth map is available, run Sobel on depth map for better normals
+    if (depthMapRaw && depthMapRaw.length === pixelCount) {
+      const depthGray = new Float32Array(depthMapRaw);
+      // Scale depth to gray range for Sobel normal computation
+      const origGray = new Float32Array(gray);
+      wasm.light_direction(
+        depthGray, cw, ch,
+        params.lightAzimuth, params.lightElevation,
+        params.lightIntensity, params.lightAmbient,
+        params.lightBump, params.lightSpecular, params.lightShininess
+      );
+      // Apply the lighting factor from depth-based normals onto original gray
+      for (let i = 0; i < pixelCount; i++) {
+        gray[i] = Math.min(1.0, Math.max(0.0, origGray[i] * (depthGray[i] / Math.max(0.001, origGray[i]))));
+      }
+    } else {
+      wasm.light_direction(
+        gray, cw, ch,
+        params.lightAzimuth, params.lightElevation,
+        params.lightIntensity, params.lightAmbient,
+        params.lightBump, params.lightSpecular, params.lightShininess
+      );
+    }
   }
 
   // ===== OUTPUT =====
