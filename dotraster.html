@@ -1495,7 +1495,7 @@ async function estimateDepthML() {
 
     if (!depthPipeline) {
       const modelSize = document.getElementById('depthModel').value || 'base';
-      const modelName = modelSize === 'base' ? 'Xenova/depth-anything-v2-base-hf' : 'Xenova/depth-anything-small-hf';
+      const modelName = modelSize === 'base' ? 'onnx-community/depth-anything-v2-base' : 'onnx-community/depth-anything-v2-small';
       const modelMB = modelSize === 'base' ? '~98' : '~25';
       loadText.textContent = 'Loading depth model (' + modelMB + 'MB)...';
       depthPipeline = await HFTransformers.pipeline('depth-estimation', modelName, {
