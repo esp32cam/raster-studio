@@ -533,7 +533,15 @@ input[type="color"]{width:28px;height:18px;border:2px solid;border-color:var(--d
             </select>
           </div>
           <div class="cr"><label>Displace</label><input type="range" id="displaceHeight" min="0" max="300" value="80" oninput="updateVals();update3DMesh()"><span class="vl" id="displaceHeightVal">80</span></div>
-          <div class="cr"><label>Smooth</label><input type="range" id="depthSmooth" min="0" max="20" value="5" oninput="document.getElementById('depthSmoothVal').textContent=this.value;invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthSmoothVal">5</span></div>
+          <div class="cr"><label>Smooth</label><input type="range" id="depthSmooth" min="0" max="20" value="3" oninput="document.getElementById('depthSmoothVal').textContent=this.value;invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthSmoothVal">3</span></div>
+          <div class="sub-title">Depth Refine</div>
+          <div class="cr"><label>Contrast</label><input type="range" id="depthContrast" min="0" max="300" value="100" oninput="document.getElementById('depthContrastVal').textContent=this.value+'%';invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthContrastVal">100%</span></div>
+          <div class="cr"><label>Edge</label><input type="range" id="depthEdgeSharp" min="0" max="20" value="5" oninput="document.getElementById('depthEdgeSharpVal').textContent=this.value;invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthEdgeSharpVal">5</span></div>
+          <div class="cr"><label>Flatten</label><input type="range" id="depthFlatten" min="0" max="100" value="0" oninput="document.getElementById('depthFlattenVal').textContent=this.value+'%';invalidateDepthSmooth();rebuild3DMesh()"><span class="vl" id="depthFlattenVal">0%</span></div>
+          <div class="cr"><label>Model</label><select class="ws" id="depthModel" onchange="depthPipeline=null;">
+            <option value="small">Small (~25MB, fast)</option>
+            <option value="base" selected>Base (~98MB, accurate)</option>
+          </select></div>
           <div class="cr"><label>Mesh</label><select class="ws" id="meshResolution" onchange="rebuild3DMesh()">
             <option value="128">128 (fast)</option><option value="256" selected>256</option><option value="512">512 (detail)</option>
           </select></div>
@@ -1486,8 +1494,12 @@ async function estimateDepthML() {
     loadText.textContent = 'Loading depth model (~25MB)...';
 
     if (!depthPipeline) {
-      depthPipeline = await HFTransformers.pipeline('depth-estimation', 'Xenova/depth-anything-small-hf', {
-        device: 'webgpu' in navigator.gpu ? 'webgpu' : 'wasm',
+      const modelSize = document.getElementById('depthModel').value || 'base';
+      const modelName = modelSize === 'base' ? 'Xenova/depth-anything-v2-base-hf' : 'Xenova/depth-anything-small-hf';
+      const modelMB = modelSize === 'base' ? '~98' : '~25';
+      loadText.textContent = 'Loading depth model (' + modelMB + 'MB)...';
+      depthPipeline = await HFTransformers.pipeline('depth-estimation', modelName, {
+        device: (navigator.gpu && 'webgpu' in navigator.gpu) ? 'webgpu' : 'wasm',
         progress_callback: (p) => {
           if (p.status === 'progress' && p.total) {
             const pct = Math.round(30 + (p.loaded / p.total) * 50);
@@ -1500,9 +1512,10 @@ async function estimateDepthML() {
     fillBar.style.width = '85%';
     loadText.textContent = 'Running inference...';
 
-    // Convert srcImage to data URL for the pipeline
+    // Convert srcImage to data URL for the pipeline — use higher res for base model
     const tmpC = document.createElement('canvas');
-    const maxDim = 512;
+    const modelSize2 = document.getElementById('depthModel').value || 'base';
+    const maxDim = modelSize2 === 'base' ? 768 : 512;
     const scale = Math.min(maxDim / origW, maxDim / origH, 1);
     tmpC.width = Math.round(origW * scale);
     tmpC.height = Math.round(origH * scale);
@@ -1640,63 +1653,109 @@ function bilateralFilter(src, w, h, radius, sigmaS, sigmaR) {
   return out;
 }
 
-// Get smoothed depth map (with bilateral filter applied)
+// Full depth refinement pipeline: smooth → contrast → edge sharpen → plane flatten
 function getSmoothedDepth(rawDepth, cw, ch) {
   const smoothLevel = parseInt(document.getElementById('depthSmooth').value) || 0;
-  const key = smoothLevel + '_' + cw + '_' + ch + '_' + (rawDepth === mlDepthMap ? 'ml' : 'sobel');
+  const contrastPct = parseInt(document.getElementById('depthContrast').value) || 100;
+  const edgeSharp = parseInt(document.getElementById('depthEdgeSharp').value) || 0;
+  const flattenPct = parseInt(document.getElementById('depthFlatten').value) || 0;
+  const key = smoothLevel + '_' + contrastPct + '_' + edgeSharp + '_' + flattenPct +
+              '_' + cw + '_' + ch + '_' + (rawDepth === mlDepthMap ? 'ml' : 'sobel');
   if (_smoothedDepthCache && _smoothedDepthKey === key) return _smoothedDepthCache;
 
-  if (smoothLevel === 0) {
-    _smoothedDepthCache = rawDepth;
-    _smoothedDepthKey = key;
-    return rawDepth;
-  }
+  let depth = new Float32Array(rawDepth);
 
-  // Bilateral filter: preserves depth edges while smoothing noise
-  const radius = Math.max(2, smoothLevel * 2);
-  const sigmaS = radius * 0.6;
-  const sigmaR = 0.1 + smoothLevel * 0.02;
-
-  // Work at reduced resolution for speed
-  const maxDim = 512;
-  const scale = Math.min(maxDim / cw, maxDim / ch, 1);
-  const sw = Math.round(cw * scale), sh = Math.round(ch * scale);
-
-  // Downsample
-  const small = new Float32Array(sw * sh);
-  for (let y = 0; y < sh; y++) {
-    for (let x = 0; x < sw; x++) {
-      const sx = Math.floor(x / scale), sy = Math.floor(y / scale);
-      small[y * sw + x] = rawDepth[Math.min(sy, ch-1) * cw + Math.min(sx, cw-1)];
+  // === STEP 1: Bilateral smooth ===
+  if (smoothLevel > 0) {
+    const radius = Math.max(2, smoothLevel * 2);
+    const sigmaS = radius * 0.6;
+    const sigmaR = 0.08 + smoothLevel * 0.015;
+    const maxDim = 512;
+    const scale = Math.min(maxDim / cw, maxDim / ch, 1);
+    const sw = Math.round(cw * scale), sh = Math.round(ch * scale);
+    const small = new Float32Array(sw * sh);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+      small[y*sw+x] = depth[Math.min(Math.floor(y/scale),ch-1)*cw + Math.min(Math.floor(x/scale),cw-1)];
     }
-  }
-
-  // Apply bilateral filter (multiple passes for stronger smoothing)
-  let filtered = small;
-  const passes = Math.min(3, Math.ceil(smoothLevel / 5));
-  for (let p = 0; p < passes; p++) {
-    filtered = bilateralFilter(filtered, sw, sh, radius, sigmaS, sigmaR);
-  }
-
-  // Upsample with bilinear interpolation
-  const result = new Float32Array(cw * ch);
-  for (let y = 0; y < ch; y++) {
-    for (let x = 0; x < cw; x++) {
+    let filtered = small;
+    const passes = Math.min(3, Math.ceil(smoothLevel / 5));
+    for (let p = 0; p < passes; p++) filtered = bilateralFilter(filtered, sw, sh, radius, sigmaS, sigmaR);
+    // Upsample
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
       const fx = x * scale, fy = y * scale;
       const x0 = Math.floor(fx), y0 = Math.floor(fy);
-      const x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1);
+      const x1 = Math.min(x0+1, sw-1), y1 = Math.min(y0+1, sh-1);
       const tx = fx - x0, ty = fy - y0;
-      result[y * cw + x] =
-        filtered[y0 * sw + x0] * (1-tx) * (1-ty) +
-        filtered[y0 * sw + x1] * tx * (1-ty) +
-        filtered[y1 * sw + x0] * (1-tx) * ty +
-        filtered[y1 * sw + x1] * tx * ty;
+      depth[y*cw+x] = filtered[y0*sw+x0]*(1-tx)*(1-ty) + filtered[y0*sw+x1]*tx*(1-ty) +
+                       filtered[y1*sw+x0]*(1-tx)*ty + filtered[y1*sw+x1]*tx*ty;
     }
   }
 
-  _smoothedDepthCache = result;
+  // === STEP 2: Depth contrast (push foreground/background apart) ===
+  if (contrastPct !== 100) {
+    const contrast = contrastPct / 100;
+    // Find median depth
+    const sorted = Float32Array.from(depth).sort();
+    const median = sorted[Math.floor(sorted.length / 2)];
+    for (let i = 0; i < depth.length; i++) {
+      let v = (depth[i] - median) * contrast + median;
+      depth[i] = Math.max(0, Math.min(1, v));
+    }
+  }
+
+  // === STEP 3: Edge sharpening (unsharp mask on depth) ===
+  if (edgeSharp > 0) {
+    const strength = edgeSharp / 5;
+    // Compute blurred version
+    const bk = 3;
+    const blurred = new Float32Array(cw * ch);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -bk; dy <= bk; dy++) for (let dx = -bk; dx <= bk; dx++) {
+        const ny = Math.max(0, Math.min(ch-1, y+dy)), nx = Math.max(0, Math.min(cw-1, x+dx));
+        sum += depth[ny*cw+nx]; cnt++;
+      }
+      blurred[y*cw+x] = sum / cnt;
+    }
+    // Unsharp mask: original + strength * (original - blurred)
+    for (let i = 0; i < depth.length; i++) {
+      depth[i] = Math.max(0, Math.min(1, depth[i] + strength * (depth[i] - blurred[i])));
+    }
+  }
+
+  // === STEP 4: Plane flattening (quantize low-variance regions to dominant depth) ===
+  if (flattenPct > 0) {
+    const flatThresh = 0.02 + flattenPct * 0.003; // depth variance threshold
+    const blockSize = 16;
+    const bw = Math.ceil(cw / blockSize), bh = Math.ceil(ch / blockSize);
+
+    // Compute per-block stats
+    for (let by = 0; by < bh; by++) {
+      for (let bx = 0; bx < bw; bx++) {
+        const y0 = by * blockSize, y1 = Math.min(y0 + blockSize, ch);
+        const x0 = bx * blockSize, x1 = Math.min(x0 + blockSize, cw);
+        let sum = 0, cnt = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { sum += depth[y*cw+x]; cnt++; }
+        const mean = sum / cnt;
+        let variance = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const d = depth[y*cw+x] - mean; variance += d * d;
+        }
+        variance /= cnt;
+        // If variance is low (flat area), snap to mean
+        if (variance < flatThresh * flatThresh) {
+          const blendAmt = flattenPct / 100;
+          for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+            depth[y*cw+x] = depth[y*cw+x] * (1 - blendAmt) + mean * blendAmt;
+          }
+        }
+      }
+    }
+  }
+
+  _smoothedDepthCache = depth;
   _smoothedDepthKey = key;
-  return result;
+  return depth;
 }
 
 // Get active depth map
@@ -1897,7 +1956,9 @@ function rebuild3DMesh() {
 
     // Displace vertices with bilinear depth sampling
     const pos = geo.attributes.position;
-    const depthThreshold = 0.15; // for edge detection in index removal
+    // Dynamic threshold: tighter when edge sharpening is high
+    const edgeSharpVal = parseInt(document.getElementById('depthEdgeSharp').value) || 0;
+    const depthThreshold = Math.max(0.03, 0.15 - edgeSharpVal * 0.006);
     const vertexDepths = new Float32Array(pos.count);
 
     for (let i = 0; i < pos.count; i++) {
